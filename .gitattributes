@@ -1,0 +1,30 @@
+# ---------------------------------------------------------------------------
+# Normalize line endings so files behave the same on Windows, macOS and Linux
+# (and in Docker containers, which are always Linux).
+#
+# Without this, Windows checks files out with CRLF by default. That silently
+# breaks anything that must start with an exact byte sequence — most
+# importantly the `#!/usr/bin/env node` shebang on our .mjs hook scripts,
+# which only works with LF line endings.
+# ---------------------------------------------------------------------------
+
+# Default: normalize everything to LF in the repo, checked out as LF too.
+* text=auto eol=lf
+
+# Scripts that run via a shebang MUST be LF, no exceptions.
+*.sh text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+
+# Windows-only scripts should stay CRLF if we ever add any.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary-ish files: never touch line endings, never diff as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
