@@ -1,0 +1,113 @@
+schema: spec-driven
+
+context: |
+  Project: KSP - E-Commerce Catalog API
+  Purpose: REST API for an e-commerce catalog (products, categories, cart, checkout).
+  App root: ksp-backend/
+  Nature: LEARNING PROJECT — the author is new to NestJS and Docker. Clarity and
+  teachability outrank cleverness; every capability must be explainable step by step.
+
+  Tech stack:
+    - Runtime: Node 22, TypeScript, NestJS 11
+    - API: GraphQL ONLY (@nestjs/graphql 13.4.5 + @nestjs/apollo 13.4.5 + @apollo/server 5 +
+      @as-integrations/express5, graphql pinned ^16.11.0). CODE-FIRST — decorators generate
+      schema.gql; never hand-write SDL. REST and Swagger have been DROPPED entirely
+    - ORM/DB: TypeORM + PostgreSQL 16 (runs in Docker Compose, not installed natively)
+    - Auth: Passport + JWT (access ~15m, refresh ~7d), argon2id hashing, RBAC: customer | admin
+    - Testing: Jest 30 (unit, mocked repositories) + Supertest (e2e against /graphql)
+    - API shape: ONE endpoint, POST /graphql. No URI versioning — GraphQL is never versioned;
+      evolve additively and use @Field({ deprecationReason }) before removing anything
+    - The only REST routes that survive: /api/health (probes need status codes) and
+      /api/uploads/* (binary transfer). Everything else is a resolver
+
+  Sister repo:
+    - ksp-frontend (React 19, Vite, TanStack Query, Tailwind) generates its ENTIRE typed
+      client from this backend's committed schema.gql via graphql-codegen
+    - schema.gql is a real contract — a stale committed schema breaks the other repo.
+      An e2e test asserts the committed file matches the generated schema
+    - Codegen reads the committed FILE, never a live URL (introspection is off in production)
+    - Keep entities and GraphQL models SEPARATE; never expose a TypeORM entity as an @ObjectType
+
+  Domain (first iteration):
+    - User, Address, Category (self-referencing closure-table tree), Product, ProductImage,
+      Cart, CartItem, Order, OrderItem
+    - Deliberately deferred: ProductVariant, Payment, Review, Coupon, full-text search
+
+  Data modeling rules (non-negotiable):
+    - Money is stored as INTEGER MINOR UNITS: price_cents INT + currency CHAR(3). Never floats
+    - UUID primary keys via gen_random_uuid(); never mix PK types across tables
+    - timestamptz for all timestamps; citext for emails
+    - Cart holds LIVE references to products (current price); Orders hold SNAPSHOTS
+      (product_name, unit_price_cents, jsonb shipping address) — orders are immutable history
+    - Migrations only. TypeORM `synchronize` is NEVER enabled, not even in development
+    - Index every foreign key — Postgres does not do this automatically
+    - Deletes: ownership -> CASCADE; orders.user_id -> RESTRICT; order_items.product_id -> SET NULL
+
+  Architecture conventions:
+    - Thin resolvers (delegate + loaders only) -> fat services (business logic) -> repositories
+    - Cross-cutting concerns registered ONCE in AppModule via APP_PIPE / APP_FILTER /
+      APP_INTERCEPTOR / APP_GUARD; GqlAuthGuard must precede RolesGuard
+    - A provider must appear in its module's `exports` to be injectable elsewhere
+    - Never read process.env outside config/ — inject ConfigService
+    - Feature folder shape: <feature>.module.ts, .resolver.ts, .service.ts, .service.spec.ts,
+      .mapper.ts, entities/ (@Entity), models/ (@ObjectType), inputs/ (@InputType)
+    - Mapped types (PartialType/PickType/OmitType) imported from @nestjs/graphql — importing
+      from @nestjs/swagger or @nestjs/mapped-types silently drops GraphQL metadata
+    - EVERY @ResolveField that touches the database MUST go through a DataLoader. A field
+      resolver runs once per parent object; without batching, 20 products = 41 queries
+    - DataLoader is @Injectable({ scope: Scope.REQUEST }) — a singleton loader caches across
+      users, which is a data-leak bug. Request scope BUBBLES to anything injecting it
+    - Errors: always HTTP 200. Failures go in errors[] with extensions.code
+      (BAD_USER_INPUT / UNAUTHENTICATED / FORBIDDEN / NOT_FOUND / CONFLICT)
+    - Relation fields resolved by field resolvers should be NULLABLE — a non-nullable field
+      that errors propagates null upward and can null the entire response
+
+  Testing mandate:
+    - Every component ships with tests AND a written explanation — neither is optional
+    - Discipline is tests-alongside: implement, then immediately write tests, then explain
+    - Unit tests mock repositories via getRepositoryToken(Entity); never touch a real database
+    - e2e tests must apply the SAME global pipes/filters/interceptors as main.ts, or they lie
+    - Always test auth boundaries: 401 without a token, 403 when a customer hits an admin route
+    - Test names state behavior, not implementation
+
+  Learning artifacts:
+    - Durable concepts are captured in LEARNING/NN-topic.md (00-docker.md already exists)
+    - Path-scoped conventions live in the workspace-root ../.claude/rules/
+      (nestjs.md, database.md, api-and-swagger.md, testing.md, docker.md)
+
+  Build order (phased; review pause at the end of each phase):
+    1 config+db · 2 health+swagger · 3 global pipes/filters/interceptors · 4 users ·
+    5 auth · 6 categories · 7 products+images · 8 cart · 9 orders/checkout · 10 hardening
+
+rules:
+  proposal:
+    - State which build-order phase (1-10) this change belongs to
+    - State the user-visible capability and the why before the what
+    - Include a "Non-goals" section to prevent scope creep
+    - Call out any deviation from the non-negotiable data modeling rules explicitly
+  design:
+    - Name the specific NestJS concepts the change introduces (decorators, providers, guards,
+      lifecycle hooks) — this project is a teaching vehicle, not just a deliverable
+    - "Show the module dependency impact: what is imported, what must be exported"
+    - For schema changes, show the columns/types/constraints and the resulting migration intent
+  tasks:
+    - Every task that adds a component must include writing its tests in the same task
+    - Each task should be independently verifiable (one npm test, curl, or Swagger UI check)
+    - Break work into chunks of max ~2 hours
+    - Include an explicit verification step per task group
+    - End with a task to write or update the relevant LEARNING/NN-topic.md note
+  spec:
+    - Specs live under openspec/specs/<capability>/ and describe behavior, not implementation
+    - Describe endpoints by capability and authorization level (public / customer / admin)
+    - State validation rules and error responses (400/401/403/404/409) as observable behavior
+    - Note required environment variables when relevant
+
+operations:
+  apply:
+    guidance:
+      - Explain each NestJS concept the first time it appears
+      - Never enable TypeORM synchronize; generate a migration and read its SQL before running
+      - Pair each component with its tests before moving to the next
+  archive:
+    guidance:
+      - Confirm tests pass and the LEARNING note exists before archiving

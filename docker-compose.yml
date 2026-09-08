@@ -1,0 +1,103 @@
+# docker-compose.yml — local development infrastructure for ksp-backend
+# ---------------------------------------------------------------------------
+# This file DESCRIBES the services our backend needs while developing:
+#   1. postgres — the database itself
+#   2. pgadmin  — a web UI for browsing that database
+#
+# "Compose" lets us define them declaratively and start everything with ONE
+# command:  docker compose up -d
+#
+# Every keyword below is explained line-by-line in LEARNING/00-docker.md.
+# Modern Compose (v2) no longer needs a top-level `version:` key — omitting it
+# is correct and intentional, not an oversight.
+# ---------------------------------------------------------------------------
+
+services:
+  # ======================= THE DATABASE =====================================
+  postgres:
+    # An IMAGE is a read-only template. A CONTAINER is a running instance of it.
+    # `postgres:16-alpine` = official PostgreSQL v16 on a tiny Alpine Linux base.
+    # The version is PINNED on purpose: a surprise major upgrade can make an
+    # existing data directory unreadable.
+    image: postgres:16-alpine
+
+    # A stable, human-friendly name so we can write `docker compose logs postgres`
+    # and `docker exec ksp-postgres ...` instead of using a random generated name.
+    container_name: ksp-postgres
+
+    # If the container crashes — or Docker starts after a reboot — bring it back
+    # up automatically, UNLESS we deliberately stopped it ourselves.
+    restart: unless-stopped
+
+    # Environment variables the postgres image reads on its FIRST startup to
+    # create the initial superuser and database.
+    # ${VAR} is interpolated from the .env file sitting next to this file, so no
+    # secret is ever hard-coded here (.env is gitignored, .env.example is not).
+    #
+    # IMPORTANT: these only take effect when the data volume is EMPTY. Changing
+    # the password later does NOT update an already-initialised database.
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+
+    # PORT MAPPING — the format is "HOST:CONTAINER".
+    #   left  (host)      = the port on YOUR Windows machine; this is what NestJS
+    #                       connects to via localhost.
+    #   right (container) = the port Postgres listens on INSIDE its own isolated
+    #                       network namespace (always 5432 for Postgres).
+    # Without this line the database would be unreachable from your machine.
+    ports:
+      - '${POSTGRES_PORT}:5432'
+
+    # VOLUMES — how data survives.
+    # Postgres writes its data files to /var/lib/postgresql/data inside the
+    # container. A container's own filesystem is DISPOSABLE: remove the container
+    # and everything written inside it is gone. Mapping that path to the NAMED
+    # VOLUME `ksp_pgdata` (declared at the bottom) makes the data outlive the
+    # container, so `docker compose down` then `up` keeps your tables intact.
+    volumes:
+      - ksp_pgdata:/var/lib/postgresql/data
+
+    # HEALTHCHECK — Docker periodically runs this command inside the container to
+    # decide whether the service is actually ready (not merely "started").
+    # `pg_isready` is Postgres's own readiness probe. Other services can then wait
+    # for `condition: service_healthy`, which avoids the classic race where the
+    # app connects before the database finishes initialising.
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 10s # how often to check
+      timeout: 5s # how long one check may take before it counts as failed
+      retries: 5 # consecutive failures before the container is marked unhealthy
+      start_period: 10s # grace window on first boot; failures here don't count
+
+  # ======================= DATABASE GUI (optional) ===========================
+  pgadmin:
+    image: dpage/pgadmin4:8.14
+    container_name: ksp-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+      # Single-user mode: skips pgAdmin's own account system. Local dev only.
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    ports:
+      # Open http://localhost:${PGADMIN_PORT} in your browser.
+      - '${PGADMIN_PORT}:80'
+    volumes:
+      - ksp_pgadmin:/var/lib/pgadmin
+    # Don't start pgAdmin until Postgres reports healthy (see healthcheck above).
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+# ============================ NAMED VOLUMES ==================================
+# Declared here, managed by Docker, stored outside this project folder.
+# They are how data persists independently of any container's lifetime.
+#
+#   docker compose down      -> containers removed, THESE SURVIVE
+#   docker compose down -v   -> ⚠️ volumes deleted too: ALL DATABASE DATA IS LOST
+volumes:
+  ksp_pgdata:
+  ksp_pgadmin:
