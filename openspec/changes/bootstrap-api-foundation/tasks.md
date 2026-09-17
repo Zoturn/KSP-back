@@ -69,17 +69,44 @@
 
 ## 2. Configuration layer
 
-- [ ] 2.1 Create `src/config/env.validation.ts` with a Joi schema covering every variable in
+- [x] 2.1 Create `src/config/env.validation.ts` with a Joi schema covering every variable in
       `.env.example` (`NODE_ENV` enum, `PORT`, `POSTGRES_*`, `JWT_*` — required even though
       unused until Phase 5, so the schema doesn't need revisiting then). Write a unit test
       that asserts validation throws on a missing `POSTGRES_PORT` and on a non-numeric one.
-- [ ] 2.2 Create `src/config/configuration.ts` using `registerAs` to namespace config
+      Also enforces a rule `.env.example` only stated as a comment: the two JWT secrets must
+      differ (`Joi.ref` + `.invalid`). Excludes `PGADMIN_*` deliberately — Docker Compose
+      reads those directly, this process never does. 7 tests, all passing.
+- [x] 2.2 Create `src/config/configuration.ts` using `registerAs` to namespace config
       (`database`, `jwt`, `app`). Write a unit test asserting `configuration()` returns the
-      expected shape given a known `process.env`.
-- [ ] 2.3 Wire `ConfigModule.forRoot({ isGlobal: true, validationSchema, load: [configuration] })`
+      expected shape given a known `process.env`. 4 tests, all passing.
+
+> **Note on `@nestjs/config` (discovered during 2.2, not anticipated in design.md):**
+> Jest failed with `Must use import to load ES Module` the moment a spec imported anything
+> from `configuration.ts`, which itself imports `@nestjs/config`. Investigated rather than
+> patched blindly: `@nestjs/config@12.0.0` (the only version `npm install` resolves — its
+> version history jumps straight from `4.0.4` to `12.0.0`, no 11.x line ever existed) ships
+> `"type": "module"` in its own `package.json`. **This is not a wrong-version problem like
+> the Nest 12 or TypeORM findings** — its peerDependencies explicitly declare
+> `"@nestjs/common": "^11.0.0 || ^12.0.0"`, meaning the NestJS team deliberately built this
+> release to support both majors at once; the version-number jump aligned it with the rest
+> of the ecosystem, it wasn't gated behind Nest 12. The real issue is narrower: Jest's
+> default `transformIgnorePatterns` skips all of `node_modules`, so it tried to `require()`
+> raw ESM as CommonJS. Fixed with the standard carve-out —
+> `"transformIgnorePatterns": ["../node_modules/(?!(@nestjs/config)/)"]` (path is relative
+> to `rootDir: "src"`) — so ts-jest transforms this one package too. Full suite (12 tests)
+> and `npm run build` both verified clean afterward.
+
+- [x] 2.3 Wire `ConfigModule.forRoot({ isGlobal: true, validationSchema, load: [configuration] })`
       in `AppModule`. Verify: temporarily blank a required `.env` value, confirm
       `npm run start:dev` fails at boot with a readable Joi error naming the missing variable,
       then restore it.
+      `load: [appConfig, databaseConfig, jwtConfig]` — the three namespaced factories from
+      2.2, since `configuration.ts` exports three registerAs calls rather than one combined
+      function. **Verified both halves for real, not just read the code:** blanked
+      `POSTGRES_PORT` in `.env` → boot failed immediately with
+      `Config validation error: POSTGRES_PORT: "POSTGRES_PORT" must be a number` (before
+      "Nest application successfully started" ever logs); restored `.env` → boot succeeded,
+      `curl localhost:3000/` → 200. `.env` is gitignored, so none of this touched git history.
 
 ## 3. Database connection and first migration
 
