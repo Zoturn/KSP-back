@@ -49,14 +49,23 @@
 > CommonJS + Jest — matching `testing.md`, `design.md`, and every version pin already in
 > `proposal.md`, with zero rule changes needed.
 
-- [ ] 1.4 Install and configure Prettier (`npm i -D prettier`) so the already-committed
+- [x] 1.4 Install and configure Prettier (`npm i -D prettier`) so the already-committed
       `.claude/hooks/prettier-check.mjs` stops no-op'ing. Verify: edit a file with bad
       formatting via Claude Code and confirm the hook reports the failure.
-- [ ] 1.5 Add `scripts/git-hooks/pre-commit` implementing Decision #8 (self-healing
+      **Already present** in the Nest 11 scaffold's `devDependencies`. Verified directly:
+      appended malformed code to `src/app.service.ts`, confirmed the hook reported
+      `Prettier check FAILED`, then restored the file to a clean diff.
+- [x] 1.5 Add `scripts/git-hooks/pre-commit` implementing Decision #8 (self-healing
       `schema.gql` regeneration on staged resolver/model/input changes; non-blocking warning
       on staged `*.entity.ts` changes with no staged migration file). Wire it via a `prepare`
       npm script running `git config core.hooksPath scripts/git-hooks`. Verify: run
       `npm install` and confirm `git config core.hooksPath` reports `scripts/git-hooks`.
+      **Verified with real commits on a throwaway branch** (deleted after), all five paths:
+      entity without migration → warns, commit proceeds; entity with migration → silent;
+      resolver staged before `schema:generate` exists (true until task 4.4) → graceful no-op;
+      a failing `schema:generate` → **commit genuinely blocked** (confirmed HEAD unchanged);
+      a succeeding one → `schema.gql` regenerated and automatically included in the commit.
+      `npm install` → `git config core.hooksPath` → `scripts/git-hooks`, confirmed.
 
 ## 2. Configuration layer
 

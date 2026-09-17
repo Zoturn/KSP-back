@@ -1,0 +1,60 @@
+#!/bin/sh
+# pre-commit — self-heals schema.gql, warns (never blocks) on entity/migration drift.
+#
+# See design.md Decision #8 (openspec/changes/bootstrap-api-foundation/design.md) for the
+# full rationale. Short version:
+#
+#   SCHEMA is safe to fully automate: `npm run schema:generate` needs no database and has
+#   no side effects, so regenerating it on every commit can only ever produce the correct
+#   file. This hook does that unconditionally when a resolver/model/input changed.
+#
+#   MIGRATIONS are NOT auto-generated here, deliberately. `migration:generate` needs a live
+#   database, needs a human-chosen name, and — per database.md — its SQL must be read
+#   before it's run. A hook that silently generated and committed a migration would violate
+#   that rule at the exact moment it matters most. So this only WARNS.
+#
+# WHY A REAL GIT HOOK AND NOT A CLAUDE CODE HOOK:
+# .claude/hooks/ only intercepts tool calls Claude itself makes in a session — never a
+# manual `git commit`, a `git merge`, or an edit made outside Claude Code. This must hold
+# regardless of who or what is committing, so it has to be a real git hook.
+#
+# Wired via `git config core.hooksPath scripts/git-hooks`, set automatically by this
+# project's npm `prepare` script (runs on every `npm install`).
+
+set -e
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+STAGED="$(git diff --cached --name-only --diff-filter=ACMR)"
+
+# ---- 1. SCHEMA — self-healing -------------------------------------------------------------
+if echo "$STAGED" | grep -Eq '(\.resolver\.ts|/models/.+\.ts|/inputs/.+\.ts)$'; then
+  HAS_SCRIPT=$(node -e "const p=require('./package.json'); process.stdout.write(p.scripts && p.scripts['schema:generate'] ? '1' : '0')" 2>/dev/null || echo "0")
+
+  if [ "$HAS_SCRIPT" = "1" ]; then
+    echo "pre-commit: resolver/model/input changed — regenerating schema.gql..."
+    if npm run --silent schema:generate; then
+      git add schema.gql
+      echo "pre-commit: schema.gql regenerated and staged."
+    else
+      echo "" >&2
+      echo "pre-commit ERROR: schema:generate failed. Fix it before committing." >&2
+      exit 1
+    fi
+  fi
+  # else: schema:generate doesn't exist yet (added in task 4.4) — nothing to do, don't block.
+fi
+
+# ---- 2. MIGRATIONS — warn only, never auto-generate ---------------------------------------
+if echo "$STAGED" | grep -Eq '\.entity\.ts$' && ! echo "$STAGED" | grep -q '^src/database/migrations/'; then
+  echo ""
+  echo "pre-commit WARNING: an entity changed but no migration file was staged."
+  echo "  If this change affects the schema, run:"
+  echo "    npm run migration:generate -- --name=<Name>"
+  echo "  then read the generated SQL before committing it."
+  echo "  (Not every entity edit needs a migration — this is a reminder, not a block.)"
+  echo ""
+fi
+
+exit 0
