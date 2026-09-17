@@ -4,7 +4,21 @@
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "transform": {
-    "^.+\\.(t|j)s$": "ts-jest"
+    "^.+\\.(t|j)s$": [
+      "ts-jest",
+      {
+        "tsconfig": {
+          "module": "CommonJS",
+          "moduleResolution": "node",
+          "resolvePackageJsonExports": false
+        }
+      }
+    ]
   },
-  "transformIgnorePatterns": ["node_modules/(?!(@nestjs/config)/)"]
+  "transformIgnorePatterns": [
+    "node_modules.(?!(@nestjs.config|@nestjs.typeorm).)"
+  ],
+  "moduleNameMapper": {
+    "typeorm-compat(\\.js)?$": "<rootDir>/mocks/typeorm-compat.stub.js"
+  }
 }

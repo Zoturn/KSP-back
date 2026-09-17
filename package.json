@@ -18,7 +18,10 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/database/data-source.ts",
+    "migration:run": "typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts",
+    "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/database/data-source.ts"
   },
   "dependencies": {
     "@apollo/server": "^5.5.1",
@@ -31,6 +34,7 @@
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/terminus": "^12.0.0",
     "@nestjs/typeorm": "^12.0.1",
+    "dotenv": "^17.4.2",
     "graphql": "^16.14.2",
     "joi": "^18.2.9",
     "pg": "^8.23.0",
@@ -75,11 +79,23 @@
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.(t|j)s$": [
+        "ts-jest",
+        {
+          "tsconfig": {
+            "module": "CommonJS",
+            "moduleResolution": "node",
+            "resolvePackageJsonExports": false
+          }
+        }
+      ]
     },
     "transformIgnorePatterns": [
-      "../node_modules/(?!(@nestjs/config)/)"
+      "node_modules.(?!(@nestjs.config|@nestjs.typeorm).)"
     ],
+    "moduleNameMapper": {
+      "typeorm-compat(\\.js)?$": "<rootDir>/../test/mocks/typeorm-compat.stub.js"
+    },
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],

@@ -75,22 +75,74 @@ Modules needing config use the `forRootAsync`/`registerAsync` + `useFactory` +
 
 ## A recurring gotcha: `@nestjs/*` packages shipping ESM ahead of the framework
 
-We've hit this twice already (the CLI's default scaffold moving to Nest 12 + full ESM;
-`@nestjs/config@12.0.0` shipping `"type": "module"` while still supporting Nest 11 via its
-peer range). Individual packages in the ecosystem are migrating to ESM on their own schedule,
-independent of whether the _framework itself_ has moved — expect more of these.
+We've hit this three times now (the CLI's default scaffold moving to Nest 12 + full ESM;
+`@nestjs/config@12.0.0` and `@nestjs/typeorm@12.0.1` both shipping `"type": "module"` while
+still declaring peer-support for Nest 11). Individual packages in the ecosystem are migrating
+to ESM on their own schedule, independent of whether the _framework itself_ has moved — expect
+more of these. **There are two genuinely different failure modes hiding behind the identical
+error message** — diagnose which one you have before picking a fix.
 
-**Symptom:** Jest fails with `Must use import to load ES Module` the moment a spec imports
-anything that transitively pulls in the offending package. Jest's default
-`transformIgnorePatterns` skips all of `node_modules`, so it tries to `require()` raw ESM.
+**Always start here:** check the failing package's own `peerDependencies`
+(`npm view <pkg> peerDependencies`) to confirm it's a deliberate dual-support release and not
+actually a wrong-major-version problem like the Nest 12 CLI scaffold was (that needs pinning
+to an older major, not any of the fixes below).
 
-**Fix:** add the package to the allowlist in `package.json`'s `jest.transformIgnorePatterns`
-(currently `"../node_modules/(?!(@nestjs/config)/)"`, relative to `rootDir: "src"`) — append
-`|@nestjs/whatever` inside the parentheses. **Before adding it**, check the failing package's
-own `peerDependencies` (`npm view <pkg> peerDependencies`) to confirm it's a deliberate
-dual-support release and not actually a wrong-major-version problem like the Nest 12 CLI
-scaffold was — those are different failure modes needing different fixes (this allowlist vs.
-pinning to an older major).
+### Failure mode A — plain `import`/`export` keywords (mechanically convertible)
+
+**Symptom:** `Must use import to load ES Module` naming a file that just uses ordinary
+`import { X } from 'y'` / `export const Z` syntax.
+
+**Fix, two parts, both required:**
+
+1. Allowlist the package in **both** `package.json`'s `jest.transformIgnorePatterns` and
+   `test/jest-e2e.json`'s (they are separate configs — see the "e2e test suite broke silently"
+   incident in `tasks.md` task 3.1/3.2 for what happens when you only fix one). Current
+   pattern: `"node_modules.(?!(@nestjs.config|@nestjs.typeorm).)"` — note the `.` instead of a
+   literal `/` or `\`; Jest doubles backslashes when normalizing these patterns on Windows in
+   a way that breaks a literal separator character, but a `.` wildcard is immune to it. Append
+   `|@nestjs.whatever` inside the parentheses for a new package.
+2. **Also required, not optional:** override ts-jest's own `module`/`moduleResolution` for the
+   transform. Our `tsconfig.json` uses `"module": "nodenext"`, which makes TypeScript decide
+   per-file whether to treat code as ESM based on the _containing package's_ `package.json` —
+   so even once Jest allows the file through, ts-jest still emits ESM output for it unless
+   told otherwise. Both jest configs' `transform` entries carry:
+   ```json
+   [
+     "ts-jest",
+     {
+       "tsconfig": {
+         "module": "CommonJS",
+         "moduleResolution": "node",
+         "resolvePackageJsonExports": false
+       }
+     }
+   ]
+   ```
+   This overrides ts-jest's in-memory compilation only — `tsconfig.json` itself (and
+   therefore `nest build`) keeps `nodenext`, which is correct for real compilation.
+
+### Failure mode B — genuinely ESM-native syntax (not mechanically convertible)
+
+**Symptom:** same error, but the file uses `import.meta` (commonly via
+`createRequire(import.meta.url)`, a pattern for getting a working `require()` inside an ESM
+module). **No transform configuration can fix this** — `import.meta` has no CommonJS
+equivalent; it's not a keyword-rewrite problem, it's a runtime-semantics one. We hit this in
+`@nestjs/typeorm/dist/common/typeorm-compat.js`.
+
+**Fix:** a `moduleNameMapper` entry redirecting the specific file to a small local stub
+(`test/mocks/typeorm-compat.stub.js`) that reproduces its real behavior for our actual
+dependency versions — not a generic mock, a faithful one. That file's whole job is "resolve
+`Connection`/`AbstractRepository` from `typeorm` if present, else `undefined`"; TypeORM 1.x
+already removed both, so the stub can just export `undefined` for each directly, which is
+exactly what the real file computes for us today. Match pattern:
+`"typeorm-compat(\\.js)?$"` → the stub path (careful: `<rootDir>` resolves relative to the
+_config file's own location_, not the project root — `test/jest-e2e.json`'s `<rootDir>` is
+the `test/` folder itself, not `..`).
+
+**What we deliberately did NOT do:** set `transformIgnorePatterns: []` (transform all of
+`node_modules` uniformly) as a blanket fix. Tested it — it doesn't solve failure mode B at all
+(confirmed: identical error, just ~30s slower per run instead of ~1s) and pays a real
+performance cost for nothing. Keep the targeted allowlist.
 
 ## Teaching requirement
 

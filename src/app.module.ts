@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { appConfig, databaseConfig, jwtConfig } from './config/configuration';
 import { envValidationSchema } from './config/env.validation';
+import { DatabaseModule } from './database/database.module';
 
 @Module({
   imports: [
@@ -22,6 +23,10 @@ import { envValidationSchema } from './config/env.validation';
       validationSchema: envValidationSchema,
       load: [appConfig, databaseConfig, jwtConfig],
     }),
+    // Boot order matters: DatabaseModule comes after ConfigModule because its
+    // TypeOrmModule.forRootAsync factory (database.module.ts) injects ConfigService — see
+    // design.md Decision #1. GraphQLModule joins this list in Phase 2, HealthModule after it.
+    DatabaseModule,
   ],
   controllers: [AppController],
   providers: [AppService],

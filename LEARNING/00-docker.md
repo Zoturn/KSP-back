@@ -13,11 +13,12 @@ Windows directly: an installer, a Windows service running in the background fore
 system-wide port, a specific version that other projects must also live with, and a messy
 uninstall.
 
-Docker replaces that with a **disposable, isolated box**. Postgres runs *inside* the box with
+Docker replaces that with a **disposable, isolated box**. Postgres runs _inside_ the box with
 its own filesystem, its own network, its own installed packages. Your Windows machine only
 sees one thing: a port. Delete the box and your machine is exactly as it was before.
 
 Practical consequences:
+
 - Two projects can use Postgres 14 and Postgres 16 simultaneously without conflict.
 - "Works on my machine" mostly disappears — the box is identical everywhere.
 - Cleanup is one command, not an uninstall wizard.
@@ -27,6 +28,7 @@ Practical consequences:
 ## 2. The four words you must understand
 
 ### Image
+
 A **read-only template**. Think of it as a class in programming, or an `.iso` file.
 `postgres:16-alpine` is an image: a frozen filesystem containing Alpine Linux plus a fully
 installed PostgreSQL 16. You never modify an image; you run it.
@@ -37,6 +39,7 @@ Images are downloaded from a **registry** (Docker Hub by default) the first time
 then cached on your disk.
 
 ### Container
+
 A **running instance of an image**. The object to the image's class. You can start many
 containers from one image; each gets its own isolated filesystem layered on top of the image.
 
@@ -45,8 +48,9 @@ internalise. Delete the container and everything written inside it is gone — i
 database tables, unless you took the step in the next section.
 
 ### Volume
+
 **Storage that outlives containers.** A named volume is a folder Docker manages outside the
-container. You *mount* it at a path inside the container, and anything written there is really
+container. You _mount_ it at a path inside the container, and anything written there is really
 written to the volume.
 
 Postgres stores its data at `/var/lib/postgresql/data`. We mount our volume `ksp_pgdata` onto
@@ -54,7 +58,8 @@ exactly that path. Result: destroy and recreate the container as often as you li
 stays. This is why `docker compose down` is safe and `docker compose down -v` is not.
 
 ### Port mapping
-Containers are network-isolated by default. Postgres listening on port 5432 *inside* the
+
+Containers are network-isolated by default. Postgres listening on port 5432 _inside_ the
 container is unreachable from Windows until you **publish** the port:
 
 ```
@@ -69,8 +74,9 @@ forwards that into the container. If port 5432 is already taken on Windows, chan
 left number (e.g. `"5433:5432"`) and update `POSTGRES_PORT` in `.env`.
 
 ### And one more: the daemon
+
 `docker` (the CLI) talks to the **Docker daemon** (the background engine). On Windows the
-daemon is **Docker Desktop**. Having the CLI installed is *not enough* — if Docker Desktop
+daemon is **Docker Desktop**. Having the CLI installed is _not enough_ — if Docker Desktop
 isn't running, every command fails with:
 
 ```
@@ -98,7 +104,7 @@ and is version-controlled. Then:
 docker compose up -d
 ```
 
-One command, identical for everyone, reviewable in a pull request. It also manages *multiple*
+One command, identical for everyone, reviewable in a pull request. It also manages _multiple_
 services (our Postgres **and** pgAdmin) and the private network between them.
 
 > Note: modern Compose is `docker compose` (a subcommand, v2). Older tutorials say
@@ -112,20 +118,20 @@ services (our Postgres **and** pgAdmin) and the private network between them.
 The file is heavily commented; this is the conceptual companion.
 
 ```yaml
-services:          # each entry = one container we want running
-  postgres:        # ← the service NAME. Also its hostname on the private network.
+services: # each entry = one container we want running
+  postgres: # ← the service NAME. Also its hostname on the private network.
 ```
 
-| Key | What it does | Why we set it |
-|---|---|---|
-| `image` | Which template to run | `postgres:16-alpine` — official, version-pinned, small |
-| `container_name` | Fixed, readable name | so `docker compose logs postgres` and `docker exec ksp-postgres` work predictably |
-| `restart: unless-stopped` | Auto-restart policy | survives crashes and reboots, but respects a deliberate stop |
-| `environment` | Env vars inside the container | the Postgres image reads these **on first boot** to create the user/DB |
-| `ports` | Publish HOST:CONTAINER | makes the DB reachable from NestJS on your machine |
-| `volumes` | Mount persistent storage | **the reason your data survives** |
-| `healthcheck` | Readiness probe | lets dependents wait until the DB truly accepts connections |
-| `depends_on` + `condition: service_healthy` | Ordering | pgAdmin waits for a healthy Postgres |
+| Key                                         | What it does                  | Why we set it                                                                     |
+| ------------------------------------------- | ----------------------------- | --------------------------------------------------------------------------------- |
+| `image`                                     | Which template to run         | `postgres:16-alpine` — official, version-pinned, small                            |
+| `container_name`                            | Fixed, readable name          | so `docker compose logs postgres` and `docker exec ksp-postgres` work predictably |
+| `restart: unless-stopped`                   | Auto-restart policy           | survives crashes and reboots, but respects a deliberate stop                      |
+| `environment`                               | Env vars inside the container | the Postgres image reads these **on first boot** to create the user/DB            |
+| `ports`                                     | Publish HOST:CONTAINER        | makes the DB reachable from NestJS on your machine                                |
+| `volumes`                                   | Mount persistent storage      | **the reason your data survives**                                                 |
+| `healthcheck`                               | Readiness probe               | lets dependents wait until the DB truly accepts connections                       |
+| `depends_on` + `condition: service_healthy` | Ordering                      | pgAdmin waits for a healthy Postgres                                              |
 
 ### The `environment` gotcha (this catches everyone)
 
@@ -162,7 +168,7 @@ docker compose up -d
 ```
 
 - `up` — create and start everything described in the file
-- `-d` — *detached*: run in the background and give you your terminal back
+- `-d` — _detached_: run in the background and give you your terminal back
 
 First run downloads the images (a few hundred MB, once). Then:
 
@@ -173,7 +179,7 @@ docker compose ps
 Expect `ksp-postgres` with state **running (healthy)**. `healthy` is the one that matters —
 it means the healthcheck passed.
 
-Verify the database really works by opening a SQL shell *inside* the container:
+Verify the database really works by opening a SQL shell _inside_ the container:
 
 ```bash
 docker compose exec postgres psql -U ksp_user -d ksp_ecommerce -c "SELECT version();"
@@ -184,7 +190,7 @@ docker compose exec postgres psql -U ksp_user -d ksp_ecommerce -c "SELECT versio
 
 pgAdmin (browser GUI): <http://localhost:5050>. Connect to host **`postgres`** (the service
 name — pgAdmin is itself a container on the same private network, so `localhost` there would
-mean *pgAdmin's own* container, not the database).
+mean _pgAdmin's own_ container, not the database).
 
 > That last point is the other classic confusion: **`localhost` means different things
 > depending on where you are.** From Windows → `localhost:5432`. From another container →
@@ -194,19 +200,19 @@ mean *pgAdmin's own* container, not the database).
 
 ## 6. Command reference
 
-| Command | Effect |
-|---|---|
-| `docker compose up -d` | start everything in the background |
-| `docker compose ps` | list services + health status |
-| `docker compose logs -f postgres` | follow the database log (`Ctrl+C` to stop watching) |
-| `docker compose stop` | stop containers, keep them |
-| `docker compose start` | start them again |
-| `docker compose restart postgres` | restart one service |
-| `docker compose down` | stop **and remove** containers — **data survives** in the volume |
-| `docker compose down -v` | ⚠️ **also deletes volumes — destroys the entire database** |
-| `docker compose exec postgres psql -U ksp_user -d ksp_ecommerce` | interactive SQL shell |
-| `docker volume ls` | list volumes (you should see `ksp-backend_ksp_pgdata`) |
-| `docker compose pull` | fetch newer images for the pinned tags |
+| Command                                                          | Effect                                                           |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `docker compose up -d`                                           | start everything in the background                               |
+| `docker compose ps`                                              | list services + health status                                    |
+| `docker compose logs -f postgres`                                | follow the database log (`Ctrl+C` to stop watching)              |
+| `docker compose stop`                                            | stop containers, keep them                                       |
+| `docker compose start`                                           | start them again                                                 |
+| `docker compose restart postgres`                                | restart one service                                              |
+| `docker compose down`                                            | stop **and remove** containers — **data survives** in the volume |
+| `docker compose down -v`                                         | ⚠️ **also deletes volumes — destroys the entire database**       |
+| `docker compose exec postgres psql -U ksp_user -d ksp_ecommerce` | interactive SQL shell                                            |
+| `docker volume ls`                                               | list volumes (you should see `ksp-backend_ksp_pgdata`)           |
+| `docker compose pull`                                            | fetch newer images for the pinned tags                           |
 
 **Memorise the difference:** `down` = safe, `down -v` = destroys your data. The `-v` flag is
 the only one in this project that can lose work irreversibly.
@@ -227,15 +233,16 @@ the only one in this project that can lose work irreversibly.
 
 ## 8. Troubleshooting
 
-| Symptom | Cause & fix |
-|---|---|
-| `the docker daemon is not running` | Docker Desktop isn't started. Launch it, wait for "Engine running". |
-| `port is already allocated` | Something else uses 5432 (often a native Postgres install). Change the **host** side: `POSTGRES_PORT=5433`, then `docker compose up -d`. |
-| `password authentication failed` | The volume was initialised with different credentials. Either use the original password or wipe it: `docker compose down -v` (destroys data). |
-| Container keeps restarting | `docker compose logs postgres` — read the actual error. |
-| Data vanished | You ran `down -v`, or never mounted the volume. |
-| pgAdmin stuck `Restarting` | We actually hit this: pgAdmin rejects `.local` email domains (`'admin@ksp.local' does not appear to be a valid email address`) and exits, so Docker restarts it forever. Fixed by using `admin@ksp.com` in `.env`. **Lesson: a restart loop means the process is exiting — `docker compose logs <service>` tells you why.** |
-| Changes to `.env` seem ignored | Compose reads `.env` at `up` time — re-run `docker compose up -d`. And remember `POSTGRES_*` credentials only apply on first init. |
+| Symptom                                                                      | Cause & fix                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `the docker daemon is not running`                                           | Docker Desktop isn't started. Launch it, wait for "Engine running".                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `port is already allocated`                                                  | Something else uses that host port. Change the **host** side: `POSTGRES_PORT=5433` (or another free port — check with `Get-NetTCPConnection -LocalPort <port> -State Listen` on Windows), then `docker compose up -d`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| **`password authentication failed`, but `docker compose ps` says `healthy`** | **We actually hit this, and it's sneakier than the row above.** The app connects to `localhost:<POSTGRES_PORT>` and gets "password authentication failed for user X" — but `docker compose exec postgres psql ...` (which reaches the container directly, bypassing the host network) works fine with the same password. **Cause:** a _different_ Postgres process was already listening on the host port — in our case a native Windows PostgreSQL service that had nothing to do with this project. Docker's healthcheck runs _inside_ the container (`docker exec ... pg_isready`), so it reports "healthy" regardless of what's happening on the host side — it never notices the collision. Meanwhile Windows silently routed `localhost:<port>` connections to whichever process actually won the port, which wasn't necessarily our container. **Fix:** find the real owner (`Get-NetTCPConnection -LocalPort <port> -State Listen \| Select OwningProcess`, then `Get-Process -Id <pid>`), then either stop that other service or — safer, since it's not yours to touch — move _this project_ to a free port instead (`POSTGRES_PORT` in `.env`, verify the new port is actually free first, `docker compose up -d` to recreate). **Lesson: "healthy" only means the container's own internals are fine — it says nothing about whether the host can actually reach it.** |
+| `password authentication failed` (volume-related)                            | The volume was initialised with different credentials than what's in `.env` now. Either use the original password or wipe it: `docker compose down -v` (destroys data).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Container keeps restarting                                                   | `docker compose logs postgres` — read the actual error.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Data vanished                                                                | You ran `down -v`, or never mounted the volume.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| pgAdmin stuck `Restarting`                                                   | We actually hit this: pgAdmin rejects `.local` email domains (`'admin@ksp.local' does not appear to be a valid email address`) and exits, so Docker restarts it forever. Fixed by using `admin@ksp.com` in `.env`. **Lesson: a restart loop means the process is exiting — `docker compose logs <service>` tells you why.**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Changes to `.env` seem ignored                                               | Compose reads `.env` at `up` time — re-run `docker compose up -d`. And remember `POSTGRES_*` credentials only apply on first init.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 ---
 

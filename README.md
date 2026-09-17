@@ -13,9 +13,9 @@ client from this service's committed `schema.gql`.
 
 ## Prerequisites
 
-| Tool | Version | Notes |
-|---|---|---|
-| Node.js | 22.x | `node --version` |
+| Tool           | Version    | Notes                           |
+| -------------- | ---------- | ------------------------------- |
+| Node.js        | 22.x       | `node --version`                |
 | Docker Desktop | any recent | **must be running** — see below |
 
 > **Docker Desktop must actually be running**, not just installed. If commands fail with
@@ -49,11 +49,11 @@ npm run start:dev
 
 Then open:
 
-| URL | What |
-|---|---|
-| <http://localhost:3000/graphql> | **GraphiQL** — the API and its interactive explorer |
-| <http://localhost:3000/api/health> | health check (liveness + database) |
-| <http://localhost:5050> | pgAdmin (DB browser) |
+| URL                                | What                                                |
+| ---------------------------------- | --------------------------------------------------- |
+| <http://localhost:3000/graphql>    | **GraphiQL** — the API and its interactive explorer |
+| <http://localhost:3000/api/health> | health check (liveness + database)                  |
+| <http://localhost:5050>            | pgAdmin (DB browser)                                |
 
 In pgAdmin, connect to host **`postgres`** — not `localhost`. pgAdmin is itself a container,
 so `localhost` there would mean pgAdmin's own container. Credentials are in `.env`.
@@ -62,20 +62,20 @@ so `localhost` there would mean pgAdmin's own container. Credentials are in `.en
 
 ## Commands
 
-| Command | Description |
-|---|---|
-| `npm run start:dev` | API with hot reload |
-| `npm test` | Jest unit tests |
-| `npm run test:e2e` | Supertest end-to-end tests |
-| `npm run test:cov` | coverage report |
-| `npm run schema:generate` | regenerate `schema.gql` (no database needed) |
-| `npm run schema:check` | fail if the committed `schema.gql` is stale |
-| `npm run migration:generate --name=X` | generate a migration from entity changes |
-| `npm run migration:run` | apply pending migrations |
-| `npm run migration:revert` | undo the last migration |
-| `docker compose up -d` | start the database |
-| `docker compose down` | stop it (**data survives**) |
-| `docker compose down -v` | ⚠️ stop **and delete all database data** |
+| Command                               | Description                                  |
+| ------------------------------------- | -------------------------------------------- |
+| `npm run start:dev`                   | API with hot reload                          |
+| `npm test`                            | Jest unit tests                              |
+| `npm run test:e2e`                    | Supertest end-to-end tests                   |
+| `npm run test:cov`                    | coverage report                              |
+| `npm run schema:generate`             | regenerate `schema.gql` (no database needed) |
+| `npm run schema:check`                | fail if the committed `schema.gql` is stale  |
+| `npm run migration:generate --name=X` | generate a migration from entity changes     |
+| `npm run migration:run`               | apply pending migrations                     |
+| `npm run migration:revert`            | undo the last migration                      |
+| `docker compose up -d`                | start the database                           |
+| `docker compose down`                 | stop it (**data survives**)                  |
+| `docker compose down -v`              | ⚠️ stop **and delete all database data**     |
 
 ---
 
@@ -111,7 +111,7 @@ LEARNING/        step-by-step teaching notes
   parent object — without batching, 20 products with images and category is 41 queries.
 - **GraphQL always returns HTTP 200.** Failures are in `errors[].extensions.code`. Tests must
   assert `errors` is undefined on success, and assert the code on failure — `.expect(401)`
-  fails against a *correctly working* server.
+  fails against a _correctly working_ server.
 - **Every component ships with tests and an explanation.** That's the point of the project.
 
 Full conventions live in this repo's `.claude/rules/`.
@@ -121,9 +121,10 @@ New to GraphQL? Start with [`LEARNING/01-graphql.md`](LEARNING/01-graphql.md).
 
 ## Troubleshooting
 
-| Problem | Fix |
-|---|---|
-| `docker daemon is not running` | Start Docker Desktop. |
-| `port is already allocated` | Something else uses 5432. Set `POSTGRES_PORT=5433` in `.env`, re-run `docker compose up -d`. |
-| `password authentication failed` | The volume was created with different credentials. Use the original password, or wipe with `docker compose down -v` (destroys data). |
-| Migrations fail on a fresh DB | Ensure the DB is `healthy` (`docker compose ps`) before running them. |
+| Problem                                                                  | Fix                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docker daemon is not running`                                           | Start Docker Desktop.                                                                                                                                                                                                                                                                        |
+| `port is already allocated`                                              | Something else uses that port. Set `POSTGRES_PORT` in `.env` to a free one, re-run `docker compose up -d`.                                                                                                                                                                                   |
+| `password authentication failed`, but `docker compose ps` says `healthy` | Another process (e.g. a native Postgres install) already owns the host port — Docker's healthcheck runs inside the container, so it never notices. Move this project to a different `POSTGRES_PORT` instead of fighting it. Full story: [`LEARNING/00-docker.md`](LEARNING/00-docker.md) §8. |
+| `password authentication failed` (no port conflict)                      | The volume was created with different credentials. Use the original password, or wipe with `docker compose down -v` (destroys data).                                                                                                                                                         |
+| Migrations fail on a fresh DB                                            | Ensure the DB is `healthy` (`docker compose ps`) before running them.                                                                                                                                                                                                                        |

@@ -112,14 +112,76 @@
 
 ## 3. Database connection and first migration
 
-- [ ] 3.1 Create `src/database/database.module.ts` with
+- [x] 3.1 Create `src/database/database.module.ts` with
       `TypeOrmModule.forRootAsync({ imports: [ConfigModule], inject: [ConfigService], useFactory })`
       per `design.md` Decision #1/#3. Verify `npm run start:dev` logs a successful DB connection
       (with Docker Postgres already running from Phase 0).
-- [ ] 3.2 Create `src/database/data-source.ts` as a standalone `DataSource` for the TypeORM
+      `autoLoadEntities: true` instead of a hand-maintained entity list or glob — avoids the
+      classic dev-vs-compiled-dist path mismatch; picks up `TypeOrmModule.forFeature([...])`
+      registrations automatically starting Phase 4. No `migrations` array here deliberately —
+      this module only connects; only the CLI (`data-source.ts`) ever runs migrations, and
+      only when a human explicitly invokes it, per `database.md`'s migrations-only rule.
+
+> **Real incident hit while verifying this task, not a hypothetical:** the first boot attempt
+> failed with `password authentication failed for user "ksp_user"`, even though
+> `docker compose ps` showed `ksp-postgres` as `healthy` and the exact same password worked
+> via `docker compose exec postgres psql ...`. Diagnosed rather than guessed: a **native
+> Windows PostgreSQL 14 service** (pre-existing on this machine, unrelated to this project)
+> was listening on host port 5432 and winning it — Docker's healthcheck runs _inside_ the
+> container, so it never notices a host-side collision. `psql` via `docker compose exec`
+> reaches the container directly (bypassing the host network entirely), which is why it
+> worked while the Windows-native Node process — hitting `localhost:5432` — silently reached
+> the wrong Postgres instance instead. Confirmed via `Get-NetTCPConnection -LocalPort 5432` +
+> `Get-CimInstance Win32_Process`, then a Windows Service check. Fixed by moving **only this
+> machine's local `.env`** to `POSTGRES_PORT=5434` (verified free first — 5433 turned out to
+> be transiently held by Docker's own WSL2 relay from a failed intermediate attempt) and
+> recreating the container; `.env.example`'s documented default stays `5432` since this
+> conflict is machine-specific, not a fact about the project. Data volume (`ksp_pgdata`)
+> confirmed intact throughout — only the container was recreated, never the volume. Verified
+> the actual fix by re-running `npm run start:dev` and seeing `TypeOrmCoreModule dependencies
+initialized` (which only ever logs after `DataSource.initialize()` genuinely succeeds), not
+> just by re-reading the code. Documented in full in `LEARNING/00-docker.md` §8 and
+> `README.md`'s troubleshooting table, since "healthcheck says healthy but the host still
+> can't really reach it" is a real, non-obvious Docker/Windows interaction worth knowing.
+
+> **Second, unrelated incident hit during this task's final verification pass:**
+> `npm run test:e2e` — which had genuinely passed at the end of task group 2 — broke again the
+> moment `database.module.ts` started importing `@nestjs/typeorm`. Same category as the
+> `@nestjs/config` ESM finding from task 2.2, but this one took real digging: the package's
+> `dist/index.js` used plain `import`/`export` (mechanically convertible), so the same
+> `transformIgnorePatterns` allowlist fix seemed like it should be enough — but even after
+> adding it correctly to **both** jest configs (learning from the exact mistake code-review
+> caught last time), the error persisted. Root cause turned out to be two-layered:
+> (1) our `tsconfig.json`'s `"module": "nodenext"` makes ts-jest emit ESM for any file whose
+> _containing package_ declares `"type": "module"` — being "allowed through" isn't the same as
+> being "converted"; needed an explicit `module: "CommonJS"` override in ts-jest's transform
+> config. (2) One specific nested file
+> (`@nestjs/typeorm/dist/common/typeorm-compat.js`) uses `createRequire(import.meta.url)` —
+> genuinely unconvertible, since `import.meta` has no CommonJS equivalent at all. Tested and
+> rejected the blanket "transform everything" approach
+> (`transformIgnorePatterns: []`) — confirmed it does NOT fix the `import.meta` case either,
+> only makes every run ~30s slower for no benefit. Real fix: a `moduleNameMapper` stub
+> (`test/mocks/typeorm-compat.stub.js`) that faithfully reproduces the real file's behavior
+> for our actual TypeORM version (both `Connection` and `AbstractRepository` are already
+> removed in 1.x, so the stub exports `undefined` for both directly — not a generic mock, the
+> literal value the real file already computes for us). Full writeup, including the exact
+> configs, in `.claude/rules/nestjs.md`'s "recurring gotcha" section — now split into two
+> named failure modes since they need genuinely different fixes. Verified: `npm test` (11/11),
+> `npm run test:e2e` (1/1, was 0/1 before the fix), `npm run build`, `npm audit` (0
+> vulnerabilities), and a real boot with `curl localhost:3000/` → 200 — all re-checked
+> afterward, not assumed clean because the config edits "looked right."
+
+- [x] 3.2 Create `src/database/data-source.ts` as a standalone `DataSource` for the TypeORM
       CLI, reading `.env` via `dotenv`, sharing connection values with 3.1. Add
       `migration:generate`, `migration:run`, `migration:revert` npm scripts pointed at it.
       Verify `npm run migration:run -- --dry-run` (or equivalent) resolves without error.
+      **Correction to this task's own wording:** `migration:run` has no `--dry-run`/`--dr`
+      flag — that flag exists only on `migration:generate` (checked `typeorm-ts-node-commonjs
+migration:run --help` directly rather than assume). Verified instead by actually running
+      `npm run migration:run` for real — safe with zero pending migrations. It connected to
+      the real (corrected-port) database, created TypeORM's own `migrations` tracking table
+      (the expected first-run side effect), and correctly reported "No migrations are
+      pending."
 - [ ] 3.3 Generate the first migration (`npm run migration:generate -- --name=AddExtensions`),
       then hand-add the two `CREATE EXTENSION IF NOT EXISTS pgcrypto;` /
       `CREATE EXTENSION IF NOT EXISTS citext;` statements per `design.md` Decision #4 — the
