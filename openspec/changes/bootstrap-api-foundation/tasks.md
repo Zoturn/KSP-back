@@ -78,7 +78,9 @@
       reads those directly, this process never does. 7 tests, all passing.
 - [x] 2.2 Create `src/config/configuration.ts` using `registerAs` to namespace config
       (`database`, `jwt`, `app`). Write a unit test asserting `configuration()` returns the
-      expected shape given a known `process.env`. 4 tests, all passing.
+      expected shape given a known `process.env`. 3 tests, all passing (a 4th, redundant
+      "coerces PORT to a number" test was removed during the `/simplify` pass — the shape
+      assertion already covers it via `toEqual`).
 
 > **Note on `@nestjs/config` (discovered during 2.2, not anticipated in design.md):**
 > Jest failed with `Must use import to load ES Module` the moment a spec imported anything
