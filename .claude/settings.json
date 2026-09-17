@@ -10,6 +10,15 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/prettier-check.mjs\""
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/post-commit.mjs\""
+          }
+        ]
       }
     ]
   }

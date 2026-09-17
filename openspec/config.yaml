@@ -71,13 +71,16 @@ context: |
     - Test names state behavior, not implementation
 
   Learning artifacts:
-    - Durable concepts are captured in LEARNING/NN-topic.md (00-docker.md already exists)
-    - Path-scoped conventions live in the workspace-root ../.claude/rules/
-      (nestjs.md, database.md, api-and-swagger.md, testing.md, docker.md)
+    - Durable concepts are captured in LEARNING/NN-topic.md
+      (00-docker.md and 01-graphql.md already exist)
+    - Path-scoped conventions live in THIS repo's own .claude/rules/
+      (nestjs.md, graphql.md, database.md, testing.md, docker.md) — each repo owns its
+      rules so they travel with it when cloned independently
 
   Build order (phased; review pause at the end of each phase):
-    1 config+db · 2 health+swagger · 3 global pipes/filters/interceptors · 4 users ·
-    5 auth · 6 categories · 7 products+images · 8 cart · 9 orders/checkout · 10 hardening
+    1 config+db · 2 GraphQL bootstrap+health (schema.gql emitted, unblocks ksp-frontend) ·
+    3 global pipes/filters/interceptors · 4 users · 5 auth · 6 categories+DataLoader ·
+    7 products+images · 8 cart · 9 orders/checkout · 10 hardening (depth/complexity/alias limits)
 
 rules:
   proposal:
@@ -92,14 +95,18 @@ rules:
     - For schema changes, show the columns/types/constraints and the resulting migration intent
   tasks:
     - Every task that adds a component must include writing its tests in the same task
-    - Each task should be independently verifiable (one npm test, curl, or Swagger UI check)
+    - "Each task should be independently verifiable: one npm test, a curl to a REST route
+      (health/uploads only), or a query run against GraphiQL / in an e2e spec"
     - Break work into chunks of max ~2 hours
     - Include an explicit verification step per task group
     - End with a task to write or update the relevant LEARNING/NN-topic.md note
   spec:
     - Specs live under openspec/specs/<capability>/ and describe behavior, not implementation
-    - Describe endpoints by capability and authorization level (public / customer / admin)
-    - State validation rules and error responses (400/401/403/404/409) as observable behavior
+    - Describe root fields (queries/mutations) and field resolvers by capability and
+      authorization level (public / customer / admin) — GraphQL has no "endpoints"
+    - "State validation rules and error behavior as observable outcomes: GraphQL responses are
+      always HTTP 200; failures are described via errors[].extensions.code
+      (BAD_USER_INPUT / UNAUTHENTICATED / FORBIDDEN / NOT_FOUND / CONFLICT), never HTTP status"
     - Note required environment variables when relevant
 
 operations:
