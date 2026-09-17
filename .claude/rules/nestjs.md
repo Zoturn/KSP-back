@@ -92,20 +92,25 @@ to an older major, not any of the fixes below).
 **Symptom:** `Must use import to load ES Module` naming a file that just uses ordinary
 `import { X } from 'y'` / `export const Z` syntax.
 
-**Fix, two parts, both required:**
+**Fix, two parts, both required, both live in ONE place — `jest.shared.js`:**
 
-1. Allowlist the package in **both** `package.json`'s `jest.transformIgnorePatterns` and
-   `test/jest-e2e.json`'s (they are separate configs — see the "e2e test suite broke silently"
-   incident in `tasks.md` task 3.1/3.2 for what happens when you only fix one). Current
-   pattern: `"node_modules.(?!(@nestjs.config|@nestjs.typeorm).)"` — note the `.` instead of a
-   literal `/` or `\`; Jest doubles backslashes when normalizing these patterns on Windows in
-   a way that breaks a literal separator character, but a `.` wildcard is immune to it. Append
+The unit config (`jest.config.js`) and e2e config (`test/jest-e2e.config.js`) both `require()`
+this file rather than each carrying their own copy. This exists specifically because the
+duplicated-copy version already caused a real regression once (task group 2 fixed
+`@nestjs/config`'s ESM issue in one config, `npm run test:e2e` broke silently because the other
+never got the same fix — see `tasks.md` task 3.1/3.2). Add a new package name in
+`jest.shared.js` and both configs pick it up automatically; there is nothing left to hand-sync.
+
+1. Allowlist the package in `transformIgnorePatterns`. Current pattern:
+   `"node_modules.(?!(@nestjs.config|@nestjs.typeorm).)"` — note the `.` instead of a literal
+   `/` or `\`; Jest doubles backslashes when normalizing these patterns on Windows in a way
+   that breaks a literal separator character, but a `.` wildcard is immune to it. Append
    `|@nestjs.whatever` inside the parentheses for a new package.
 2. **Also required, not optional:** override ts-jest's own `module`/`moduleResolution` for the
    transform. Our `tsconfig.json` uses `"module": "nodenext"`, which makes TypeScript decide
    per-file whether to treat code as ESM based on the _containing package's_ `package.json` —
    so even once Jest allows the file through, ts-jest still emits ESM output for it unless
-   told otherwise. Both jest configs' `transform` entries carry:
+   told otherwise. `jest.shared.js`'s `transform` entry carries:
    ```json
    [
      "ts-jest",
@@ -129,15 +134,22 @@ module). **No transform configuration can fix this** — `import.meta` has no Co
 equivalent; it's not a keyword-rewrite problem, it's a runtime-semantics one. We hit this in
 `@nestjs/typeorm/dist/common/typeorm-compat.js`.
 
-**Fix:** a `moduleNameMapper` entry redirecting the specific file to a small local stub
-(`test/mocks/typeorm-compat.stub.js`) that reproduces its real behavior for our actual
-dependency versions — not a generic mock, a faithful one. That file's whole job is "resolve
-`Connection`/`AbstractRepository` from `typeorm` if present, else `undefined`"; TypeORM 1.x
-already removed both, so the stub can just export `undefined` for each directly, which is
-exactly what the real file computes for us today. Match pattern:
+**Fix:** a `moduleNameMapper` entry (in each config individually — the mapped path differs per
+config's `<rootDir>`, so this one part can't move into `jest.shared.js`) redirecting the
+specific file to a small local stub (`test/mocks/typeorm-compat.stub.js`) that reproduces its
+real behavior for our actual dependency versions — not a generic mock, a faithful one. That
+file's whole job is "resolve `Connection`/`AbstractRepository` from `typeorm` if present, else
+`undefined`"; TypeORM 1.x already removed both, so the stub can just export `undefined` for
+each directly, which is exactly what the real file computes for us today. Match pattern:
 `"typeorm-compat(\\.js)?$"` → the stub path (careful: `<rootDir>` resolves relative to the
-_config file's own location_, not the project root — `test/jest-e2e.json`'s `<rootDir>` is
-the `test/` folder itself, not `..`).
+_config file's own location_, not the project root — `test/jest-e2e.config.js`'s `<rootDir>`
+is the `test/` folder itself, not `..`).
+
+Because `typeorm`/`@nestjs/typeorm` are caret-ranged, not exact-pinned, a future `npm install`
+could silently move past the versions this stub's assumption depends on. A guard test
+(`src/database/typeorm-version-assumptions.spec.ts`) asserts the installed majors still match
+what was verified — fails loudly, by name, the moment that stops being true, instead of the
+stub silently going stale.
 
 **What we deliberately did NOT do:** set `transformIgnorePatterns: []` (transform all of
 `node_modules` uniformly) as a blanket fix. Tested it — it doesn't solve failure mode B at all

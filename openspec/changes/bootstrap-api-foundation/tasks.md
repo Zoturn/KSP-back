@@ -182,6 +182,27 @@ migration:run --help` directly rather than assume). Verified instead by actually
       the real (corrected-port) database, created TypeORM's own `migrations` tracking table
       (the expected first-run side effect), and correctly reported "No migrations are
       pending."
+
+> **Post-commit `/simplify` pass on tasks 3.1/3.2 (4 parallel review agents: reuse,
+> simplification, efficiency, altitude):** reuse and efficiency found nothing; simplification
+> and altitude both independently flagged the same real issue — `package.json` and
+> `test/jest-e2e.json` had accumulated a byte-identical, hand-duplicated ts-jest override
+> block, the exact failure mode `nestjs.md` had just finished documenting as something we'd
+> already been burned by once. Fixed by extracting the shared pieces into `jest.shared.js`,
+> consumed by two new standalone configs (`jest.config.js`, `test/jest-e2e.config.js`) that
+> replace the old inline `package.json` `"jest"` key and `test/jest-e2e.json` — a future
+> ESM-shipping package is now a one-line edit in one place, not two hand-synced copies.
+> Altitude also caught a second, sharper issue: the `typeorm-compat.stub.js` comment claimed
+> the project was "pinned to `typeorm@^1.1.1`" — a caret range, not a pin, so a routine
+> `npm install` could silently move past the version the stub's assumption depends on with no
+> alarm. Fixed with a genuine drift-detector
+> (`src/database/typeorm-version-assumptions.spec.ts`) asserting the installed majors still
+> match what was verified — **proved it actually fails on a mismatch** (temporarily changed
+> the expected prefix to `'99.'`, confirmed a real failure, reverted) rather than assuming a
+> plausible-looking assertion works. Verified afterward: `npm test` (13/13, up from 11 with
+> the new guard test), `npm run test:e2e` (1/1), `npm run build`, `npm audit`
+> (0 vulnerabilities).
+
 - [ ] 3.3 Generate the first migration (`npm run migration:generate -- --name=AddExtensions`),
       then hand-add the two `CREATE EXTENSION IF NOT EXISTS pgcrypto;` /
       `CREATE EXTENSION IF NOT EXISTS citext;` statements per `design.md` Decision #4 — the
