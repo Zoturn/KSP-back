@@ -2,7 +2,7 @@ schema: spec-driven
 
 context: |
   Project: KSP - E-Commerce Catalog API
-  Purpose: REST API for an e-commerce catalog (products, categories, cart, checkout).
+  Purpose: GraphQL API for an e-commerce catalog (products, categories, cart, checkout).
   App root: ksp-backend/
   Nature: LEARNING PROJECT — the author is new to NestJS and Docker. Clarity and
   teachability outrank cleverness; every capability must be explainable step by step.
@@ -12,7 +12,8 @@ context: |
     - API: GraphQL ONLY (@nestjs/graphql 13.4.5 + @nestjs/apollo 13.4.5 + @apollo/server 5 +
       @as-integrations/express5, graphql pinned ^16.11.0). CODE-FIRST — decorators generate
       schema.gql; never hand-write SDL. REST and Swagger have been DROPPED entirely
-    - ORM/DB: TypeORM + PostgreSQL 16 (runs in Docker Compose, not installed natively)
+    - "ORM/DB: TypeORM 1.x (verified: 0.3.x deprecated APIs we never use were removed; core
+      decorators/migration CLI unaffected) + PostgreSQL 16 (Docker Compose, not native)"
     - Auth: Passport + JWT (access ~15m, refresh ~7d), argon2id hashing, RBAC: customer | admin
     - Testing: Jest 30 (unit, mocked repositories) + Supertest (e2e against /graphql)
     - API shape: ONE endpoint, POST /graphql. No URI versioning — GraphQL is never versioned;
@@ -91,12 +92,12 @@ rules:
   design:
     - Name the specific NestJS concepts the change introduces (decorators, providers, guards,
       lifecycle hooks) — this project is a teaching vehicle, not just a deliverable
-    - "Show the module dependency impact: what is imported, what must be exported"
+    - 'Show the module dependency impact: what is imported, what must be exported'
     - For schema changes, show the columns/types/constraints and the resulting migration intent
   tasks:
     - Every task that adds a component must include writing its tests in the same task
-    - "Each task should be independently verifiable: one npm test, a curl to a REST route
-      (health/uploads only), or a query run against GraphiQL / in an e2e spec"
+    - 'Each task should be independently verifiable: one npm test, a curl to a REST route
+      (health/uploads only), or a query run against GraphiQL / in an e2e spec'
     - Break work into chunks of max ~2 hours
     - Include an explicit verification step per task group
     - End with a task to write or update the relevant LEARNING/NN-topic.md note
@@ -104,9 +105,9 @@ rules:
     - Specs live under openspec/specs/<capability>/ and describe behavior, not implementation
     - Describe root fields (queries/mutations) and field resolvers by capability and
       authorization level (public / customer / admin) — GraphQL has no "endpoints"
-    - "State validation rules and error behavior as observable outcomes: GraphQL responses are
+    - 'State validation rules and error behavior as observable outcomes: GraphQL responses are
       always HTTP 200; failures are described via errors[].extensions.code
-      (BAD_USER_INPUT / UNAUTHENTICATED / FORBIDDEN / NOT_FOUND / CONFLICT), never HTTP status"
+      (BAD_USER_INPUT / UNAUTHENTICATED / FORBIDDEN / NOT_FOUND / CONFLICT), never HTTP status'
     - Note required environment variables when relevant
 
 operations:

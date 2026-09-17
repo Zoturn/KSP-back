@@ -9,10 +9,30 @@
       Also found and fixed 4 high-severity multer DoS CVEs (CVSS 7.5) surfaced by `npm install`
       via an `overrides` pin to `multer@^2.4.0` — unrelated to the Nest version choice, fixable
       without it. `npm audit` → 0 vulnerabilities.
-- [ ] 1.2 Install pinned dependencies exactly as specified in `proposal.md`'s Impact section
+- [x] 1.2 Install pinned dependencies exactly as specified in `proposal.md`'s Impact section
       (`@nestjs/config`, `joi`, `@nestjs/typeorm`, `typeorm`, `pg`, `@nestjs/graphql@13.4.5`,
       `@nestjs/apollo@13.4.5`, `@apollo/server@^5.5.1`, `@as-integrations/express5`,
       `graphql@^16.11.0`, `@nestjs/terminus`). Verify `npm ls graphql` reports `16.x`, not `17.x`.
+      **Verified: `graphql@16.14.2`**, deduped to one copy across the whole tree. `npm audit`
+      → 0 vulnerabilities. `npm run build` still clean with the new deps present but unwired.
+
+> **Note on `typeorm` (discovered during 1.2, not anticipated in design.md/proposal.md):**
+> npm resolved `typeorm@1.1.1` — TypeORM shipped a real `1.0` major (verified legitimate:
+> same GitHub org, same maintainers as the well-known `0.3.x` line, which is now tagged
+> `legacy`). Investigated rather than assumed safe, the same way as the Nest 12 finding in
+> 1.1: fetched TypeORM's own upgrade guide. Verdict — **kept `1.1.1`**, no pin-back needed:
+>
+> - No peer-dependency conflict (unlike Nest 12). `@nestjs/typeorm@12.0.1` (well past the
+>   documented `v11.0.1+` minimum for v1 compat) declares `typeorm: "^0.3.0 || ^1.0.0-dev"`.
+> - Every removed API (`Connection`, the global `createConnection`/`getRepository` helpers,
+>   `TYPEORM_*` env vars) was something our design never planned to use — `design.md`
+>   Decision #3 already specified `DataSource`, and `nestjs.md` already specified
+>   `@InjectRepository` DI over TypeORM's own deprecated repository helpers.
+> - `@Entity`/`@Column`/relation decorators, `@Tree`, and the migration CLI are unaffected.
+> - **One behavioral nuance to remember from Phase 4 onward, not a blocker now:**
+>   `nullable: false` on `@ManyToOne`/owning `@OneToOne` now generates an INNER JOIN instead
+>   of a LEFT JOIN.
+
 - [x] 1.3 Enable `emitDecoratorMetadata` and `experimentalDecorators` in `tsconfig.json`
       (required for both TypeORM and `@nestjs/graphql` code-first). Verify `npm run build` succeeds.
       **Already true in the Nest 11 scaffold's generated `tsconfig.json`** — no edit needed.
