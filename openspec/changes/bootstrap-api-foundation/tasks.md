@@ -241,21 +241,66 @@ migration:run --help` directly rather than assume). Verified instead by actually
 
 ## 4. GraphQL bootstrap
 
-- [ ] 4.1 Wire `GraphQLModule.forRootAsync<ApolloDriverConfig>` in `AppModule` exactly per
+- [x] 4.1 Wire `GraphQLModule.forRootAsync<ApolloDriverConfig>` in `AppModule` exactly per
       `design.md` Decision #5 (`ApolloDriver`, `autoSchemaFile` at repo root, `sortSchema: true`,
       `graphiql` gated on `NODE_ENV`, explicit `context` factory). Verify `npm run start:dev`
       boots without error and creates `schema.gql`.
-- [ ] 4.2 Add a minimal `AppResolver` with `apiStatus: String!` returning a static string, per
+      Reads `nodeEnv` off the typed `app` namespace via `getOrThrow<AppConfig>('app')` rather
+      than `config.get('NODE_ENV')`, matching how `main.ts` reads the port. `introspection` is
+      gated alongside `graphiql`. Build confirmed both are valid `ApolloDriverConfig` options.
+
+> **Ordering constraint this task list didn't anticipate (found by running it):** 4.1's stated
+> verification — "boots without error and creates `schema.gql`" — **cannot pass before 4.2
+> exists.** A GraphQL schema is invalid without at least one root query, so with zero
+> resolvers the boot dies at `GraphQLError: Query root type must be provided.` and no
+> `schema.gql` is written. Demonstrated deliberately rather than worked around, since it's a
+> genuinely useful constraint to understand: until real feature resolvers arrive in Phase 4,
+> `apiStatus` is what makes the schema generatable at all. 4.1 and 4.2 are effectively one
+> unit of work.
+
+- [x] 4.2 Add a minimal `AppResolver` with `apiStatus: String!` returning a static string, per
       `specs/graphql-api/spec.md` "A minimal query proves the schema is live". Write a unit
       test for the resolver (no mocks needed — it has no dependencies) and confirm it returns
       the expected value.
-- [ ] 4.3 Verify manually: open `http://localhost:3000/graphql`, confirm GraphiQL loads, run
+      Registered in `AppModule`'s `providers` — a `@Resolver()` is an ordinary provider, and
+      Nest discovers it no other way. Emitted SDL is `apiStatus: String!` with the
+      `description` option carried through as a GraphQL docstring. 1 test, passing (14 total).
+- [x] 4.3 Verify manually: open `http://localhost:3000/graphql`, confirm GraphiQL loads, run
       `{ apiStatus }` and confirm a successful `data` response with no `errors`.
-- [ ] 4.4 Create `src/schema.generate.ts` per `design.md` Decision #6 (minimal Nest context,
+      GraphiQL HTML confirmed served for a browser-style `Accept: text/html` request;
+      `POST /graphql {"query":"{ apiStatus }"}` → `{"data":{"apiStatus":"ok"}}` with no
+      `errors` key, exactly as `specs/graphql-api/spec.md` requires.
+
+> **Correction to our own rules, found while verifying 4.3.** `graphql.md` and `testing.md`
+> both said GraphQL "returns HTTP 200 for essentially every outcome." Testing an invalid query
+> against the real server showed that's too broad: `{ fieldThatDoesNotExist }` returns **400**
+> (`extensions.code: GRAPHQL_VALIDATION_FAILED`), not 200. The precise rule is
+> **execution-phase** failures (resolver threw, guard rejected — everything auth-related)
+> → 200 + `errors`; **parse/validation-phase** failures (malformed or schema-invalid
+> documents) → 400 + `errors`. This matters directly for Phase 5: auth assertions stay at 200,
+> so the existing guidance holds, but the blanket phrasing would have justified a wrong test
+> eventually. Both rule files corrected with a table. Also visible in that response:
+> `extensions.stacktrace`, present because `NODE_ENV !== 'production'` — exactly the
+> disclosure `graphql.md`'s Security section says Phase 10's `formatError` must redact.
+
+- [x] 4.4 Create `src/schema.generate.ts` per `design.md` Decision #6 (minimal Nest context,
       `GraphQLModule` only, no `DatabaseModule`). Add `schema:generate` and `schema:check`
       (`schema:generate` + `git diff --exit-code schema.gql`) npm scripts. Verify: stop the
       Docker database, run `npm run schema:generate`, and confirm it succeeds and produces an
       identical `schema.gql` to the one from 4.1.
+      Uses `GraphQLSchemaBuilderModule` + `GraphQLSchemaFactory` (NestJS's own minimal module
+      for this), and imports `GRAPHQL_SDL_FILE_HEADER` from `@nestjs/graphql` rather than
+      hardcoding the header — checked it's publicly exported, so byte-identity survives any
+      future change to it upstream. **Verified with `docker compose stop postgres`:** the
+      script ran clean with no database, and the output was byte-identical to the
+      app-generated file (same md5 `ba72df29…`, `diff` empty). Also verified `schema:check`
+      in **both** directions rather than only the passing one: added a temporary extra field
+      to `AppResolver`, confirmed it detected the drift and exited **1**; reverted, confirmed
+      exit 0. (First measurement of that exit code was wrong — piping through `tail` meant
+      `$?` captured `tail`'s status, not the check's. Re-ran unpiped to get the real value.)
+      One maintenance cost stated plainly in the file: `RESOLVERS` is a hand-maintained list,
+      since this script never builds the app's module graph. Task 6.1's schema-drift e2e test
+      and the pre-commit hook both cover that gap.
 
 ## 5. Health endpoint
 
