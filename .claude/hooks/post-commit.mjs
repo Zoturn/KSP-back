@@ -130,15 +130,20 @@ if (testSummary) lines.push('', testSummary);
 
 lines.push(
   '',
-  'POST-COMMIT REVIEW — run both of these now, in order:',
-  '  1. Skill: simplify            (reuse, simplification, efficiency cleanups)',
-  '  2. Skill: code-review:code-review   (correctness bugs in the diff)',
+  'POST-COMMIT REVIEW — run all three now, in this order:',
+  '  1. Skill: test-coverage-check       (are tests MISSING for what changed?)',
+  '  2. Skill: simplify                  (reuse, simplification, efficiency cleanups)',
+  '  3. Skill: code-review:code-review   (correctness bugs in the diff)',
+  '',
+  'Coverage goes first because this project\'s rule is that nothing is done without',
+  'tests — a missing test is a bigger problem than an unsimplified line, and writing',
+  'the test first means the other two passes review code that is actually covered.',
   '',
   'Then fix anything they surface and amend or follow up with a commit.',
   '',
-  'SKIP BOTH if this commit was itself the result of applying /simplify output or',
-  'review fixes — otherwise this loops indefinitely. Also fix any failing tests above',
-  'BEFORE running the review skills, so they review working code.',
+  'SKIP ALL THREE if this commit was itself the result of applying /simplify output,',
+  'review fixes, or added tests — otherwise this loops indefinitely. Also fix any',
+  'failing tests above BEFORE running them, so they review working code.',
 );
 
 report(lines.join('\n'));
