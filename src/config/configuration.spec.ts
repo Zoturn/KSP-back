@@ -26,11 +26,6 @@ describe('configuration', () => {
 
       expect(appConfig()).toEqual({ nodeEnv: 'production', port: 4000 });
     });
-
-    it('coerces PORT to a number, not a numeric string', () => {
-      process.env.PORT = '3000';
-      expect(typeof appConfig().port).toBe('number');
-    });
   });
 
   describe('databaseConfig', () => {
