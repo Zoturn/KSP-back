@@ -1,13 +1,34 @@
 ## 1. Project scaffold and tooling
 
-- [ ] 1.1 Run `nest new` (or manual scaffold) into `ksp-backend`, TypeScript, npm. Verify
+- [x] 1.1 Run `nest new` (or manual scaffold) into `ksp-backend`, TypeScript, npm. Verify
       `npm run start:dev` boots the default Nest app and `npm test` runs the default spec.
+      **Done via `@nestjs/cli@11.0.24`** (not `@latest`/12.x — see note below) scaffolded into
+      an isolated temp dir, then merged in, keeping our existing `README.md`. Verified: unit
+      tests 1/1 passed, `npm run start:dev` compiled and booted, and `curl localhost:3000/`
+      returned 200.
+      Also found and fixed 4 high-severity multer DoS CVEs (CVSS 7.5) surfaced by `npm install`
+      via an `overrides` pin to `multer@^2.4.0` — unrelated to the Nest version choice, fixable
+      without it. `npm audit` → 0 vulnerabilities.
 - [ ] 1.2 Install pinned dependencies exactly as specified in `proposal.md`'s Impact section
       (`@nestjs/config`, `joi`, `@nestjs/typeorm`, `typeorm`, `pg`, `@nestjs/graphql@13.4.5`,
       `@nestjs/apollo@13.4.5`, `@apollo/server@^5.5.1`, `@as-integrations/express5`,
       `graphql@^16.11.0`, `@nestjs/terminus`). Verify `npm ls graphql` reports `16.x`, not `17.x`.
-- [ ] 1.3 Enable `emitDecoratorMetadata` and `experimentalDecorators` in `tsconfig.json`
+- [x] 1.3 Enable `emitDecoratorMetadata` and `experimentalDecorators` in `tsconfig.json`
       (required for both TypeORM and `@nestjs/graphql` code-first). Verify `npm run build` succeeds.
+      **Already true in the Nest 11 scaffold's generated `tsconfig.json`** — no edit needed.
+      Verified: `npm run build` → clean, `dist/` produced with no errors.
+
+> **Note on the CLI version pin (discovered during 1.1, not anticipated in design.md):**
+> `@nestjs/cli@latest` today scaffolds **NestJS 12** with native ESM (`"type": "module"`) and
+> Vitest/oxlint. Verified via npm that `@nestjs/graphql@13.4.5`'s peerDependencies require
+> `@nestjs/core@^11.0.1` — **not** 12.x — so that combination would break on install. Also
+> verified NestJS 11 is actively maintained in parallel (`11.2.5` patch shipped the same day as
+> `12.0.3`; 12.0.0 itself is under a month old at time of writing), so pinning to it is not
+> "using an outdated version," it's using what our already-verified GraphQL/Apollo stack
+> requires. Scaffolded with `@nestjs/cli@11.0.24` instead, which correctly produced Nest 11 +
+> CommonJS + Jest — matching `testing.md`, `design.md`, and every version pin already in
+> `proposal.md`, with zero rule changes needed.
+
 - [ ] 1.4 Install and configure Prettier (`npm i -D prettier`) so the already-committed
       `.claude/hooks/prettier-check.mjs` stops no-op'ing. Verify: edit a file with bad
       formatting via Claude Code and confirm the hook reports the failure.
@@ -89,8 +110,7 @@
       running schema via `GraphQLSchemaHost`, print it sorted, and assert it matches the
       committed `schema.gql` byte-for-byte. Verify it passes on a clean build and would fail if
       `schema.gql` were manually edited (test this by hand once, then revert the edit).
-- [ ] 6.2 Run the full verification sequence end-to-end on a **fresh** `docker compose down -v`
-      + `up -d` + `migration:run` + `start:dev` to confirm `README.md`'s "Getting started"
+- [ ] 6.2 Run the full verification sequence end-to-end on a **fresh** `docker compose down -v` + `up -d` + `migration:run` + `start:dev` to confirm `README.md`'s "Getting started"
       steps are accurate as written. Fix the README if any step was wrong or missing.
 - [ ] 6.3 Confirm every spec scenario in `specs/service-health/spec.md` and
       `specs/graphql-api/spec.md` has a corresponding passing test or manual verification
@@ -101,6 +121,6 @@
 - [ ] 7.1 Write `LEARNING/02-nestjs-fundamentals.md` covering: modules, providers, and
       dependency injection; the `forRoot` vs `forRootAsync` distinction and why config-dependent
       modules need the latter; what `@Injectable()` actually does; the DI container at a level
-      of depth matching `00-docker.md` and `01-graphql.md`. Write it to be read *before* section
+      of depth matching `00-docker.md` and `01-graphql.md`. Write it to be read _before_ section
       2-3 implementation, so future readers of this change can learn from it in the intended order.
 - [ ] 7.2 Update `README.md`'s "Getting started" section if task 6.2 surfaced any corrections.
