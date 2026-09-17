@@ -203,15 +203,41 @@ migration:run --help` directly rather than assume). Verified instead by actually
 > the new guard test), `npm run test:e2e` (1/1), `npm run build`, `npm audit`
 > (0 vulnerabilities).
 
-- [ ] 3.3 Generate the first migration (`npm run migration:generate -- --name=AddExtensions`),
+- [x] 3.3 Generate the first migration (`npm run migration:generate -- --name=AddExtensions`),
       then hand-add the two `CREATE EXTENSION IF NOT EXISTS pgcrypto;` /
       `CREATE EXTENSION IF NOT EXISTS citext;` statements per `design.md` Decision #4 — the
       differ has nothing to diff yet. **Read the generated file before running it** (project
       rule). Verify: `npm run migration:run` against the Docker database succeeds, and
       `docker compose exec postgres psql -U ksp_user -d ksp_ecommerce -c "\dx"` lists both
       extensions.
-- [ ] 3.4 Verify `npm run migration:revert` cleanly drops both extensions, then re-run
+      **Two corrections to this task's own wording, both verified rather than assumed:**
+      (1) `migration:generate` does NOT produce an empty migration when there's nothing to
+      diff — it refuses outright, naming `migration:create` as the right command. `design.md`
+      Decision #4 has been corrected accordingly; used `migration:create` (added as a new npm
+      script — it needs no `-d` flag, since scaffolding a file requires no DB connection).
+      (2) The CLI takes a **positional path**, not `--name=X` (checked `--help` first).
+      Read the scaffolded file before writing into it, per the project rule. `down()`
+      deliberately uses plain `DROP EXTENSION IF EXISTS`, **never `CASCADE`** — CASCADE would
+      silently destroy dependent objects (future `citext` columns, `gen_random_uuid()`
+      defaults), turning a routine rollback into data loss; without it Postgres refuses and
+      tells you a later migration must be reverted first, which is the behaviour we want.
+      Verified beyond the task's bar: captured the extension list **before** running (only
+      `plpgsql`, so the migration genuinely did the work rather than silently no-op'ing on
+      pre-existing extensions), then after (`citext` 1.6, `pgcrypto` 1.3), plus the
+      `migrations` bookkeeping row. Also proved both extensions actually _function_, not just
+      appear in `\dx`: `gen_random_uuid()` returns a real UUID, and
+      `'Foo@Example.com'::citext = 'foo@example.com'::citext` → `t` while the same comparison
+      as plain `text` → `f` — a direct demonstration of why `users.email` needs `citext`.
+- [x] 3.4 Verify `npm run migration:revert` cleanly drops both extensions, then re-run
       `migration:run` to leave the database in the applied state.
+      Full round trip verified: revert dropped both extensions (back to `plpgsql` only) **and**
+      removed the `migrations` row (count 0); re-running re-applied both and restored the
+      bookkeeping row. Database left in the applied state. Worth noting the migration log
+      shows `START TRANSACTION` / `COMMIT` around both directions — TypeORM runs migrations
+      transactionally by default, so a mid-migration failure rolls back atomically including
+      the bookkeeping write. Doing this rollback test **now**, while nothing yet depends on
+      the extensions, is deliberate: once entities exist, `DROP EXTENSION` without CASCADE
+      will correctly refuse.
 
 ## 4. GraphQL bootstrap
 

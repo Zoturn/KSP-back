@@ -17,13 +17,14 @@ REST health check backed by a real database ping.
 
 **Non-Goals:** anything covered by `proposal.md`'s Non-goals section (no entities beyond
 extensions, no auth, no global pipes/filters/interceptors, no DataLoader, no security limits).
-Additionally, out of scope for *design* specifically: CI wiring for `schema:check` (the git
+Additionally, out of scope for _design_ specifically: CI wiring for `schema:check` (the git
 hook in Decision #8 covers local enforcement; a CI job is a Phase 10 concern), and any decision
 about hosting (local Docker only).
 
 ## Decisions
 
 ### 1. Module layout: `ConfigModule` → `DatabaseModule` → `GraphQLModule`, in that boot order
+
 **Decision:** `AppModule` imports `ConfigModule` first (global), then `DatabaseModule`, then
 `GraphQLModule.forRootAsync`, then `HealthModule`.
 
@@ -42,12 +43,13 @@ anti-pattern the project rule exists to prevent.
 difference between `forRoot` (static) and `forRootAsync` (needs injected config first).
 
 ### 2. Config validation: Joi schema, fail-fast at boot
+
 **Decision:** `ConfigModule.forRoot({ isGlobal: true, validationSchema, load: [configuration] })`
 where `validationSchema` is a Joi object requiring every variable in `.env.example` and
 rejecting boot if one is missing or malformed (e.g. `POSTGRES_PORT` not a number).
 
 **Why:** the alternative — an undefined env var quietly becoming `undefined` in a connection
-string — fails at the *first query*, deep inside a resolver, with a confusing error. Failing
+string — fails at the _first query_, deep inside a resolver, with a confusing error. Failing
 at boot with "POSTGRES_PORT is required" is the entire point of a config layer for a learner.
 
 **Alternative considered:** `class-validator` on a config class instead of Joi. Both are valid
@@ -58,7 +60,9 @@ no extra decorator boilerplate for a flat env shape this size.
 principle distinct from "fail eventually with a worse error."
 
 ### 3. Database wiring: `TypeOrmModule.forRootAsync` + a standalone `data-source.ts`
+
 **Decision:** Two separate TypeORM configuration surfaces that share the same values:
+
 - `DatabaseModule` uses `TypeOrmModule.forRootAsync({ useFactory, inject: [ConfigService] })`
   for the running app.
 - `src/database/data-source.ts` exports a plain `DataSource` instance (no Nest DI) for the
@@ -73,16 +77,28 @@ TypeORM constraint, not a choice.
 **Concept taught:** the boundary between "code that runs inside Nest's DI container" and "code
 that runs as a plain Node script" — the first time this distinction matters in the project.
 
-### 4. First migration: extensions only, generated then hand-verified
-**Decision:** `migration:generate` against zero entities produces an empty migration; the
-`pgcrypto` and `citext` `CREATE EXTENSION` statements are added by hand into that generated
-migration file (the differ has nothing to diff yet, since there are no entities).
+### 4. First migration: extensions only, hand-written
+
+**Decision:** create an empty migration with **`migration:create`**, then hand-write the
+`pgcrypto` and `citext` `CREATE EXTENSION` statements into it.
+
+> **Corrected during implementation (task 3.3).** This decision originally said to use
+> `migration:generate`, on the assumption it "produces an empty migration" when there's
+> nothing to diff. It does not — verified by running it, which refuses outright with:
+> "No changes in database schema were found - cannot generate a migration. To create a new
+> empty migration use `typeorm migration:create` command". The two commands are genuinely
+> different tools: `migration:generate` diffs entities against the live database (needs a DB
+> connection _and_ a real diff), while `migration:create` just scaffolds an empty file (needs
+> neither). Extensions aren't entity-derived, so `migration:create` was always the right
+> command — which is exactly what this decision's own "Concept taught" note below describes.
 
 Columns/types/constraints introduced by this migration: none. Only two SQL statements:
+
 ```sql
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS citext;
 ```
+
 No table changes. Every future entity migration depends on this one having run first
 (`gen_random_uuid()` and `citext` columns both require it).
 
@@ -94,7 +110,9 @@ fresh clone + `migration:run` produces an identical database with no undocumente
 there too.
 
 ### 5. GraphQL bootstrap: `ApolloDriver`, `autoSchemaFile` at repo root, explicit `context`
+
 **Decision:**
+
 ```ts
 GraphQLModule.forRootAsync<ApolloDriverConfig>({
   driver: ApolloDriver,
@@ -107,8 +125,9 @@ GraphQLModule.forRootAsync<ApolloDriverConfig>({
     playground: false,
     context: ({ req, res }) => ({ req, res }),
   }),
-})
+});
 ```
+
 One trivial `@Resolver()` with an `apiStatus: String!` query proves the layer boots.
 
 **Why each option, per `graphql.md`:** `sortSchema: true` keeps `schema.gql` diffs meaningful
@@ -118,10 +137,11 @@ this exact seam — making it implicit would make the auth chapter (Phase 5) muc
 explain. `playground: false` because graphql-playground is discontinued; `graphiql` is its
 maintained replacement.
 
-**Concept taught:** code-first schema generation — the schema is *derived from*, not
+**Concept taught:** code-first schema generation — the schema is _derived from_, not
 hand-written alongside, the TypeScript.
 
 ### 6. Schema export script independent of the database
+
 **Decision:** `src/schema.generate.ts` boots only the pieces needed to reflect decorators into
 a schema (a minimal Nest application context with `GraphQLModule`, no `DatabaseModule`), so
 `npm run schema:generate` works with Postgres stopped. `schema:check` runs generation then
@@ -130,12 +150,13 @@ a schema (a minimal Nest application context with `GraphQLModule`, no `DatabaseM
 **Why:** per `graphql.md`, `schema.gql` is the cross-repo contract. If generating it required a
 live database, checking it in CI would need a database just to check a file — real, avoidable
 coupling. It's also the load-bearing fact behind Decision #8: because generation has no side
-effects and no external dependency, it's *safe* to run automatically on every commit.
+effects and no external dependency, it's _safe_ to run automatically on every commit.
 
 **Concept taught:** that a Nest "application" doesn't have to mean "the whole app" — you can
 boot a narrower module tree for a specific purpose.
 
 ### 7. Health stays REST, colocated with the one other REST concern (uploads, later)
+
 **Decision:** `HealthModule` exposes `GET /api/health` via `@nestjs/terminus`, using
 `TypeOrmHealthIndicator.pingCheck('database')`. It is unauthenticated (no auth guard exists
 yet in this change — that arrives in Phase 5, where health gets an explicit `@Public()`).
@@ -152,6 +173,7 @@ nothing — nothing else needs to inject health internals.
 exception rather than an inconsistency.
 
 ### 8. A real `pre-commit` git hook enforces schema freshness and warns on migration drift
+
 **Decision:** a git `pre-commit` hook (plain shell, at `scripts/git-hooks/pre-commit`, wired in
 via `git config core.hooksPath scripts/git-hooks` — set automatically by an npm `prepare`
 script once `package.json` exists in Phase 1) does two things on every commit, staged or not,
@@ -167,7 +189,7 @@ by anyone or anything, including a merge commit and edits made outside Claude Co
 
 **Why the asymmetry:** these two risks are not equally safe to automate. Schema generation is a
 pure, deterministic function of the source — running it automatically can only ever produce the
-*correct* file. Migration generation requires a live database connection, requires a
+_correct_ file. Migration generation requires a live database connection, requires a
 human-chosen filename, and — per `database.md`'s explicit rule — its SQL must be **read before
 it's run**; a hook that silently ran and committed a generated migration would violate that
 rule at the exact moment it matters most (schema changes to a real database). So automation
@@ -209,8 +231,8 @@ to automate" get different treatments even when they look like the same kind of 
 - **[Trade-off]** Two TypeORM config surfaces (`DatabaseModule` + `data-source.ts`) instead of
   one. Accepted — this is inherent to how the TypeORM CLI works outside Nest's DI, not a choice
   this design could avoid.
-- **[Trade-off]** The pre-commit hook only protects commits made *on a machine where it's
-  installed* (via the `prepare` script, itself only run on `npm install`). A commit made
+- **[Trade-off]** The pre-commit hook only protects commits made _on a machine where it's
+  installed_ (via the `prepare` script, itself only run on `npm install`). A commit made
   through GitHub's web UI, for instance, bypasses it entirely. Accepted for a single-developer
   learning project; a CI-side `schema:check` job (Phase 10) would close that gap for a team.
 
@@ -218,6 +240,7 @@ to automate" get different treatments even when they look like the same kind of 
 
 No production deployment exists yet — this is the first change to a greenfield repo. Steps to
 bring a fresh clone up:
+
 1. `docker compose up -d` (from `LEARNING/00-docker.md`, already committed).
 2. `npm install` — also runs the `prepare` script that wires up the pre-commit hook.
 3. `npm run migration:run` — applies the extensions migration to an empty database.
