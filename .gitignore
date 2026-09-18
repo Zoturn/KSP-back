@@ -36,3 +36,6 @@ openapi.json
 
 # Claude Code local overrides
 .claude/settings.local.json
+
+# Personal learning notes — kept locally, not published
+LEARNING/
