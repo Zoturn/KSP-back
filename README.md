@@ -13,15 +13,23 @@ client from this service's committed `schema.gql`.
 
 ## Prerequisites
 
-| Tool           | Version    | Notes                           |
-| -------------- | ---------- | ------------------------------- |
-| Node.js        | 22.x       | `node --version`                |
-| Docker Desktop | any recent | **must be running** — see below |
+| Tool           | Version              | Notes                           |
+| -------------- | -------------------- | ------------------------------- |
+| Node.js        | **>= 24.9** (24 LTS) | `node --version` — see below    |
+| Docker Desktop | any recent           | **must be running** — see below |
+
+> **Node 24.9 is a hard floor, not a preference.** Several `@nestjs/*` packages ship native
+> ESM, and Jest can only load them on Node >= 24.9. On an older Node every test suite that
+> touches `@nestjs/config`, `@nestjs/typeorm` or `@nestjs/terminus` fails with
+> `Must use import to load ES Module`. The version is pinned in `package.json`'s `engines` and
+> in `.nvmrc`; with nvm installed, `nvm use` in this directory picks it up.
+>
+> Note that the flag doing the other half of the work (`--experimental-vm-modules`) is already
+> baked into the `jest` npm script — which is why tests must be run via `npm run test` /
+> `npm run test:e2e` and **not** by invoking `npx jest` directly.
 
 > **Docker Desktop must actually be running**, not just installed. If commands fail with
 > `the docker daemon is not running`, launch Docker Desktop and wait for "Engine running".
-> New to Docker? Read [`LEARNING/00-docker.md`](LEARNING/00-docker.md) first — it explains
-> everything from zero.
 
 ---
 
@@ -93,7 +101,6 @@ src/
                  each: *.resolver.ts, *.service.ts, *.mapper.ts, entities/, models/, inputs/
 test/            e2e specs (Supertest -> /graphql)
 openspec/        capability specs (written before code)
-LEARNING/        step-by-step teaching notes
 ```
 
 ---
@@ -109,22 +116,25 @@ LEARNING/        step-by-step teaching notes
   that must not move when the database refactors.
 - **Every relation field resolver goes through a DataLoader.** A field resolver runs once per
   parent object — without batching, 20 products with images and category is 41 queries.
-- **GraphQL always returns HTTP 200.** Failures are in `errors[].extensions.code`. Tests must
-  assert `errors` is undefined on success, and assert the code on failure — `.expect(401)`
-  fails against a _correctly working_ server.
+- **GraphQL returns HTTP 200 for execution failures.** Anything a resolver or guard produces —
+  including auth failures — is a 200 with `errors[].extensions.code`. (A document that fails
+  _parse or validation_, like a typo'd field name, returns 400 instead; that's a malformed
+  request, not something application code produces.) Tests must assert `errors` is undefined on
+  success and assert the code on failure — `.expect(401)` fails against a _correctly working_
+  server.
 - **Every component ships with tests and an explanation.** That's the point of the project.
 
 Full conventions live in this repo's `.claude/rules/`.
-New to GraphQL? Start with [`LEARNING/01-graphql.md`](LEARNING/01-graphql.md).
 
 ---
 
 ## Troubleshooting
 
-| Problem                                                                  | Fix                                                                                                                                                                                                                                                                                          |
-| ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `docker daemon is not running`                                           | Start Docker Desktop.                                                                                                                                                                                                                                                                        |
-| `port is already allocated`                                              | Something else uses that port. Set `POSTGRES_PORT` in `.env` to a free one, re-run `docker compose up -d`.                                                                                                                                                                                   |
-| `password authentication failed`, but `docker compose ps` says `healthy` | Another process (e.g. a native Postgres install) already owns the host port — Docker's healthcheck runs inside the container, so it never notices. Move this project to a different `POSTGRES_PORT` instead of fighting it. Full story: [`LEARNING/00-docker.md`](LEARNING/00-docker.md) §8. |
-| `password authentication failed` (no port conflict)                      | The volume was created with different credentials. Use the original password, or wipe with `docker compose down -v` (destroys data).                                                                                                                                                         |
-| Migrations fail on a fresh DB                                            | Ensure the DB is `healthy` (`docker compose ps`) before running them.                                                                                                                                                                                                                        |
+| Problem                                                                  | Fix                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docker daemon is not running`                                           | Start Docker Desktop.                                                                                                                                                                                                                    |
+| `port is already allocated`                                              | Something else uses that port. Set `POSTGRES_PORT` in `.env` to a free one, re-run `docker compose up -d`.                                                                                                                               |
+| `password authentication failed`, but `docker compose ps` says `healthy` | Another process (e.g. a native Postgres install) already owns the host port — Docker's healthcheck runs inside the container, so it never notices. Move this project to a different `POSTGRES_PORT` instead of fighting it.              |
+| `password authentication failed` (no port conflict)                      | The volume was created with different credentials. Use the original password, or wipe with `docker compose down -v` (destroys data).                                                                                                     |
+| Migrations fail on a fresh DB                                            | Ensure the DB is `healthy` (`docker compose ps`) before running them.                                                                                                                                                                    |
+| `Must use import to load ES Module` in tests                             | Node is below 24.9 (`node -v`; `nvm use 24`), or the tests were started with `npx jest` instead of `npm run test` / `npm run test:e2e` — the latter supply the required `--experimental-vm-modules` flag. See `.claude/rules/nestjs.md`. |

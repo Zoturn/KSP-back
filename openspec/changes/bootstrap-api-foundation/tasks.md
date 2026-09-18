@@ -304,17 +304,77 @@ migration:run --help` directly rather than assume). Verified instead by actually
 
 ## 5. Health endpoint
 
-- [ ] 5.1 Add `@nestjs/terminus`'s `TerminusModule` to a new `HealthModule`, importing
+- [x] 5.1 Add `@nestjs/terminus`'s `TerminusModule` to a new `HealthModule`, importing
       `DatabaseModule`. Implement `GET /api/health` using `TypeOrmHealthIndicator.pingCheck`
       per `design.md` Decision #7. Set the app's global prefix to `api` in `main.ts`, excluding
       `/graphql` from it (per Decision #7's note that GraphQL stays unprefixed).
-- [ ] 5.2 Write an e2e test (`test/health.e2e-spec.ts`) asserting: (a) with the database up,
+      **Two corrections to this task's own wording, both found by testing rather than assuming:** 1. **`HealthModule` must NOT import `DatabaseModule`.** `TypeOrmModule.forRootAsync`
+      registers `TypeOrmCoreModule`, which is `@Global()` — the `DataSource` is injectable
+      application-wide, so `TypeOrmHealthIndicator` resolves with `imports: [TerminusModule]`
+      alone. Importing `DatabaseModule` would be redundant noise implying a dependency that
+      isn't real. 2. **Excluding `/graphql` from the prefix is unnecessary.** `@nestjs/graphql` registers
+      its route through the Apollo driver, not Nest's HTTP router, so `setGlobalPrefix` never
+      sees it. No `exclude` option needed. Verified three ways against the running app: - boot log: `HealthController {/api/health}` **and** `Mapped {/graphql, POST}` - `GET /api/health` → **200** `{"status":"ok","info":{"database":{"status":"up",…}}}` - `POST /graphql` → **200** `{"data":{"apiStatus":"ok"}}`, while
+      `POST /api/graphql` → **404** (proving the prefix genuinely did not apply)
+- [x] 5.2 Write an e2e test (`test/health.e2e-spec.ts`) asserting: (a) with the database up,
       `GET /api/health` returns 200 with a passing database check; (b) the endpoint requires no
       Authorization header. Verify the test passes with `npm run test:e2e`.
-- [ ] 5.3 Write an e2e test asserting `GET /api/health` returns a non-2xx status when the
+- [x] 5.3 Write an e2e test asserting `GET /api/health` returns a non-2xx status when the
       database is unreachable (stop the Docker container for this one test, or point the health
       indicator at a bad connection in the test setup — choose whichever is more reliable in
       CI-less local test runs, and document the choice in the test file). Verify it passes.
+      **Chose overriding the `DataSource` provider over stopping the container** (rationale in
+      the spec file): hermetic, no Docker CLI dependency, no machine-wide state mutated from
+      inside a test, and it still runs the real indicator, the real `SELECT 1` dispatch, the
+      real `HealthCheckService`, and Terminus's real error mapping — only the socket is faked.
+      Asserts **503** specifically rather than merely "non-2xx", because 503 is what tells a
+      load balancer to pull the instance while a 500 would read as an application bug.
+      **3/3 e2e tests pass.**
+
+> **Two findings during 5.2/5.3 that changed more than this task group.**
+>
+> **(a) The e2e harness didn't mirror `main.ts`, and would have produced a lying test.**
+> An e2e spec builds its app with `createNestApplication()`, which runs the module graph but
+> never calls `bootstrap()` — so `setGlobalPrefix('api')` did not exist in tests. A health spec
+> would have had to hit `/health` to go green while production serves `/api/health`: a passing
+> test proving nothing about the deployed route. Fixed at the root rather than by hardcoding
+> the path in the spec — bootstrap configuration moved into `src/app.setup.ts`'s
+> `configureApp(app)`, called by both `main.ts` and every e2e spec. Phase 5's global
+> `ValidationPipe` and GraphQL exception filter now land there once and the tests inherit them,
+> which is exactly what `testing.md` already required ("apply the same global
+> pipes/filters/interceptors as `main.ts` — otherwise error codes differ and the tests lie").
+>
+> **(b) The whole Jest/ESM workaround stack is deleted.** `@nestjs/terminus@12` ships ESM like
+> `@nestjs/config` and `@nestjs/typeorm` before it, but allowlisting it in
+> `transformIgnorePatterns` changed nothing: three of its files use `import.meta`
+> (`health-check.decorator.js`, `utils/checkPackage.util.js`, and `microservice/grpc.health.js`,
+> which the root barrel pulls in unconditionally), which no transform can convert. That meant
+> three more hand-written stubs — tripling the mock surface for one health endpoint.
+>
+> Took the other branch instead, **with the user's agreement since it changes their
+> environment**: Node 22.22.1 → **24.11.1** (already installed under nvm; nothing downloaded),
+> which lets Jest 30 `require()` ESM natively. Deleted: the `transformIgnorePatterns`
+> allowlist, the ts-jest `module: CommonJS` override, `test/mocks/typeorm-compat.stub.js`, and
+> `src/database/typeorm-version-assumptions.spec.ts` (the drift guard that existed only to
+> protect that stub — hence unit tests dropping 13 → 11).
+>
+> **The trap, which cost the most time here:** Jest's gate is
+> `vm.SourceTextModule.prototype.hasAsyncGraph`, and `vm.SourceTextModule` only exists under
+> **`--experimental-vm-modules`**. Upgrading Node alone accomplishes nothing — the check reads
+> false either way, with the identical error message, which reads as "the upgrade didn't work."
+> The flag now lives in one place: package.json's `"jest"` script, which `test`, `test:watch`,
+> `test:cov` and `test:e2e` all delegate to. Node is pinned by `engines` + `.nvmrc`.
+> `.claude/rules/nestjs.md`'s ESM section was rewritten from a how-to-work-around guide into a
+> how-to-diagnose-a-regression one.
+
+- [x] 5.4 (unplanned, arising from 5.1) Delete the Nest scaffold's vestigial
+      `AppController`/`AppService` and their specs. Nothing referenced them — `AppResolver` is
+      independent — and `nestjs.md` already stated the only controllers in this app are health
+      and (later) uploads. `setGlobalPrefix('api')` had just relocated their dead "Hello World!"
+      route from `/` to `/api`, which made keeping it actively misleading. Verified on a real
+      `start:prod` boot: the app now maps exactly two routes, `{/api/health, GET}` and
+      `{/graphql, POST}`; `/` and `/api` both 404; `npm run schema:check` still exits 0
+      (confirming they contributed nothing to the GraphQL contract).
 
 ## 6. Cross-cutting verification
 

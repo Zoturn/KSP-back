@@ -14,11 +14,12 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:cov": "jest --coverage",
-    "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.config.js",
+    "jest": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
+    "test": "npm run jest",
+    "test:watch": "npm run jest -- --watch",
+    "test:cov": "npm run jest -- --coverage",
+    "test:debug": "node --experimental-vm-modules --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
+    "test:e2e": "npm run jest -- --config ./test/jest-e2e.config.js",
     "schema:generate": "ts-node -r tsconfig-paths/register src/schema.generate.ts",
     "schema:check": "npm run schema:generate && git diff --exit-code schema.gql",
     "migration:create": "typeorm-ts-node-commonjs migration:create",
@@ -72,5 +73,8 @@
   },
   "overrides": {
     "multer": "^2.4.0"
+  },
+  "engines": {
+    "node": ">=24.9.0"
   }
 }

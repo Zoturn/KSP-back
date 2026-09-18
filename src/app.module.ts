@@ -3,13 +3,12 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
-import { AppController } from './app.controller';
 import { AppResolver } from './app.resolver';
-import { AppService } from './app.service';
 import type { AppConfig } from './config/configuration';
 import { appConfig, databaseConfig, jwtConfig } from './config/configuration';
 import { envValidationSchema } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -30,7 +29,7 @@ import { DatabaseModule } from './database/database.module';
     }),
     // Boot order matters: DatabaseModule comes after ConfigModule because its
     // TypeOrmModule.forRootAsync factory (database.module.ts) injects ConfigService — see
-    // design.md Decision #1. HealthModule joins this list next.
+    // design.md Decision #1.
     DatabaseModule,
 
     // The entire API surface. `forRootAsync` (not the static `forRoot`) for the same reason
@@ -74,12 +73,20 @@ import { DatabaseModule } from './database/database.module';
         };
       },
     }),
+
+    // The one deliberate REST route in a GraphQL-only API — probes read status codes, and
+    // GraphQL can't express failure in the transport. See health.controller.ts.
+    HealthModule,
   ],
-  controllers: [AppController],
+  // No `controllers` here. The scaffold's AppController/AppService ("Hello World!" at `/`)
+  // were deleted: nothing referenced them, and `nestjs.md` states the only controllers in this
+  // app are health and (later) uploads. `setGlobalPrefix('api')` had just moved that dead route
+  // to `/api`, which made keeping it actively misleading. HealthModule owns the one controller.
+  //
   // AppResolver is registered as an ordinary provider — a @Resolver() is just an @Injectable()
   // that the GraphQL schema builder also reflects over. Nest doesn't discover resolvers by
   // filename or decorator alone; if it isn't listed here, it contributes nothing to the schema
   // and code-first generation fails with "Query root type must be provided."
-  providers: [AppService, AppResolver],
+  providers: [AppResolver],
 })
 export class AppModule {}

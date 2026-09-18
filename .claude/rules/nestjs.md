@@ -73,88 +73,47 @@ metadata and produces a broken schema.
 Modules needing config use the `forRootAsync`/`registerAsync` + `useFactory` +
 `inject: [ConfigService]` pattern, never top-level `process.env` reads.
 
-## A recurring gotcha: `@nestjs/*` packages shipping ESM ahead of the framework
+## `@nestjs/*` packages that ship ESM — solved, but know why
 
-We've hit this three times now (the CLI's default scaffold moving to Nest 12 + full ESM;
-`@nestjs/config@12.0.0` and `@nestjs/typeorm@12.0.1` both shipping `"type": "module"` while
-still declaring peer-support for Nest 11). Individual packages in the ecosystem are migrating
-to ESM on their own schedule, independent of whether the _framework itself_ has moved — expect
-more of these. **There are two genuinely different failure modes hiding behind the identical
-error message** — diagnose which one you have before picking a fix.
+Several `@nestjs/*` packages ship native ESM while the framework itself is still CommonJS:
+`@nestjs/config@12`, `@nestjs/typeorm@12`, and `@nestjs/terminus@12` all declare
+`"type": "module"` with peer ranges of `^11.0.0 || ^12.0.0` — deliberate dual-support
+releases, not wrong-major mistakes. Expect more of them.
 
-**Always start here:** check the failing package's own `peerDependencies`
-(`npm view <pkg> peerDependencies`) to confirm it's a deliberate dual-support release and not
-actually a wrong-major-version problem like the Nest 12 CLI scaffold was (that needs pinning
-to an older major, not any of the fixes below).
+Under Jest this used to break every suite that imported them, and the workarounds were
+substantial: a `transformIgnorePatterns` allowlist, a ts-jest `module: CommonJS` override,
+and hand-written stubs for files using `import.meta` (which no transform can convert).
 
-### Failure mode A — plain `import`/`export` keywords (mechanically convertible)
+**All of that is deleted.** Jest 30 loads ESM natively via `require(esm)`, gated on two
+conditions that must BOTH hold:
 
-**Symptom:** `Must use import to load ES Module` naming a file that just uses ordinary
-`import { X } from 'y'` / `export const Z` syntax.
+| Condition                       | Where it's pinned                                                          |
+| ------------------------------- | -------------------------------------------------------------------------- |
+| Node **>= 24.9**                | `engines` in `package.json`, plus `.nvmrc`                                 |
+| **`--experimental-vm-modules`** | package.json's `"jest"` script, which every other test script delegates to |
 
-**Fix, two parts, both required, both live in ONE place — `jest.shared.js`:**
+The second is the non-obvious half and the reason this looks broken if you only do the first:
+Jest tests `vm.SourceTextModule.prototype.hasAsyncGraph`, and **without the flag
+`vm.SourceTextModule` is `undefined` entirely** — so the check reads false on Node 26 just as
+it does on Node 22. Upgrading Node alone changes nothing.
 
-The unit config (`jest.config.js`) and e2e config (`test/jest-e2e.config.js`) both `require()`
-this file rather than each carrying their own copy. This exists specifically because the
-duplicated-copy version already caused a real regression once (task group 2 fixed
-`@nestjs/config`'s ESM issue in one config, `npm run test:e2e` broke silently because the other
-never got the same fix — see `tasks.md` task 3.1/3.2). Add a new package name in
-`jest.shared.js` and both configs pick it up automatically; there is nothing left to hand-sync.
+**If `Must use import to load ES Module` ever comes back, check these in order:**
 
-1. Allowlist the package in `transformIgnorePatterns`. Current pattern:
-   `"node_modules.(?!(@nestjs.config|@nestjs.typeorm).)"` — note the `.` instead of a literal
-   `/` or `\`; Jest doubles backslashes when normalizing these patterns on Windows in a way
-   that breaks a literal separator character, but a `.` wildcard is immune to it. Append
-   `|@nestjs.whatever` inside the parentheses for a new package.
-2. **Also required, not optional:** override ts-jest's own `module`/`moduleResolution` for the
-   transform. Our `tsconfig.json` uses `"module": "nodenext"`, which makes TypeScript decide
-   per-file whether to treat code as ESM based on the _containing package's_ `package.json` —
-   so even once Jest allows the file through, ts-jest still emits ESM output for it unless
-   told otherwise. `jest.shared.js`'s `transform` entry carries:
-   ```json
-   [
-     "ts-jest",
-     {
-       "tsconfig": {
-         "module": "CommonJS",
-         "moduleResolution": "node",
-         "resolvePackageJsonExports": false
-       }
-     }
-   ]
-   ```
-   This overrides ts-jest's in-memory compilation only — `tsconfig.json` itself (and
-   therefore `nest build`) keeps `nodenext`, which is correct for real compilation.
+1. `node -v` — is it >= 24.9? nvm-windows switches a machine-wide symlink, so an `nvm use 22`
+   for some unrelated project silently takes this repo's tests with it. `nvm use 24` restores
+   it; `.nvmrc` records the intent.
+2. Is the command going through `npm run test` / `test:e2e`? Invoking `npx jest` directly
+   bypasses the flag and reproduces the old error exactly.
 
-### Failure mode B — genuinely ESM-native syntax (not mechanically convertible)
+Only if both are satisfied is it a genuinely new problem. Do **not** reintroduce
+`transformIgnorePatterns` or a stub as a reflex — that trades one line of config for a mock
+that silently goes stale, which is what we just spent this effort removing.
 
-**Symptom:** same error, but the file uses `import.meta` (commonly via
-`createRequire(import.meta.url)`, a pattern for getting a working `require()` inside an ESM
-module). **No transform configuration can fix this** — `import.meta` has no CommonJS
-equivalent; it's not a keyword-rewrite problem, it's a runtime-semantics one. We hit this in
-`@nestjs/typeorm/dist/common/typeorm-compat.js`.
-
-**Fix:** a `moduleNameMapper` entry (in each config individually — the mapped path differs per
-config's `<rootDir>`, so this one part can't move into `jest.shared.js`) redirecting the
-specific file to a small local stub (`test/mocks/typeorm-compat.stub.js`) that reproduces its
-real behavior for our actual dependency versions — not a generic mock, a faithful one. That
-file's whole job is "resolve `Connection`/`AbstractRepository` from `typeorm` if present, else
-`undefined`"; TypeORM 1.x already removed both, so the stub can just export `undefined` for
-each directly, which is exactly what the real file computes for us today. Match pattern:
-`"typeorm-compat(\\.js)?$"` → the stub path (careful: `<rootDir>` resolves relative to the
-_config file's own location_, not the project root — `test/jest-e2e.config.js`'s `<rootDir>`
-is the `test/` folder itself, not `..`).
-
-Because `typeorm`/`@nestjs/typeorm` are caret-ranged, not exact-pinned, a future `npm install`
-could silently move past the versions this stub's assumption depends on. A guard test
-(`src/database/typeorm-version-assumptions.spec.ts`) asserts the installed majors still match
-what was verified — fails loudly, by name, the moment that stops being true, instead of the
-stub silently going stale.
-
-**What we deliberately did NOT do:** set `transformIgnorePatterns: []` (transform all of
-`node_modules` uniformly) as a blanket fix. Tested it — it doesn't solve failure mode B at all
-(confirmed: identical error, just ~30s slower per run instead of ~1s) and pays a real
-performance cost for nothing. Keep the targeted allowlist.
+**A note on how this was diagnosed, because the shortcut failed:** the error message names
+`transformIgnorePatterns` as the fix, and for `@nestjs/config` it genuinely was. Following
+that advice for `@nestjs/terminus` produced an allowlist entry that changed nothing, because
+terminus's real blocker was three files using `import.meta` — a different failure with an
+identical message. Reading the failing file beat trusting the error text.
 
 ## Teaching requirement
 
