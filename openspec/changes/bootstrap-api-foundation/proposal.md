@@ -92,7 +92,7 @@ from the very first commit — schema is created exclusively through migrations.
 **Architectural note**
 Health is deliberately REST, not GraphQL. Probes read HTTP status codes, and GraphQL always
 returns 200 — a health check whose transport cannot express failure is not a health check.
-It must also live *below* the layer it reports on, so it can report a failed GraphQL bootstrap.
+It must also live _below_ the layer it reports on, so it can report a failed GraphQL bootstrap.
 
 **Risk**
 Low and self-contained. The main failure mode is environment drift (wrong credentials or port),

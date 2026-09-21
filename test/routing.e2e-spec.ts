@@ -32,7 +32,7 @@ interface GraphQLResponse {
   errors?: unknown[];
 }
 
-describe('Global prefix routing (e2e)', () => {
+describe('GraphQL endpoint and global prefix routing (e2e)', () => {
   let app: INestApplication<App>;
 
   beforeAll(async () => {
@@ -59,6 +59,22 @@ describe('Global prefix routing (e2e)', () => {
     expect(body.data?.apiStatus).toBe('ok');
   });
 
+  it('serves the interactive schema explorer outside production', async () => {
+    // graphql-api spec, "Developer opens the interactive explorer". GraphiQL is enabled by
+    // `graphiql: !isProduction` in app.module.ts, and Jest sets NODE_ENV=test, so it should
+    // be on here. Asserted over HTTP rather than by reading the config, because the config
+    // being right and the UI actually being served are different claims.
+    //
+    // It answers the SAME path as the API — a browser GET with an HTML Accept header gets
+    // the explorer, a POST gets query execution — which is why this belongs with routing.
+    const res = await request(app.getHttpServer())
+      .get('/graphql')
+      .set('Accept', 'text/html');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/html/);
+  });
+
   it('does not serve GraphQL under the /api prefix', async () => {
     // The half that proves the prefix never applied, rather than merely that /graphql
     // happens to also work.
@@ -76,6 +92,25 @@ describe('Global prefix routing (e2e)', () => {
     const res = await request(app.getHttpServer()).get('/api/health');
 
     expect(res.status).not.toBe(404);
+  });
+
+  it('rejects a document that fails schema validation with a 400', async () => {
+    // graphql-api spec, "A document that fails parse or validation is rejected by the
+    // transport". This pins the correction made in 6.3: the spec used to claim EVERY
+    // syntactically valid request gets a 200. It does not — validation failures are a
+    // transport-level rejection, and only execution-phase failures ride inside a 200.
+    //
+    // Worth a test precisely because it is counter-intuitive and was written down wrong in
+    // four places. Execution-phase (200 + errors) cannot be tested yet: no resolver in the
+    // app can fail. Phase 5's auth guards are the first that can, and testing.md already
+    // requires those tests to assert on extensions.code rather than status.
+    const res = await request(app.getHttpServer())
+      .post('/graphql')
+      .send({ query: '{ fieldThatDoesNotExist }' });
+    const body = res.body as GraphQLResponse;
+
+    expect(res.status).toBe(400);
+    expect(body.errors).toBeDefined();
   });
 
   it('serves nothing at the root', async () => {

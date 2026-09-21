@@ -70,20 +70,28 @@ so `localhost` there would mean pgAdmin's own container. Credentials are in `.en
 
 ## Commands
 
-| Command                               | Description                                  |
-| ------------------------------------- | -------------------------------------------- |
-| `npm run start:dev`                   | API with hot reload                          |
-| `npm test`                            | Jest unit tests                              |
-| `npm run test:e2e`                    | Supertest end-to-end tests                   |
-| `npm run test:cov`                    | coverage report                              |
-| `npm run schema:generate`             | regenerate `schema.gql` (no database needed) |
-| `npm run schema:check`                | fail if the committed `schema.gql` is stale  |
-| `npm run migration:generate --name=X` | generate a migration from entity changes     |
-| `npm run migration:run`               | apply pending migrations                     |
-| `npm run migration:revert`            | undo the last migration                      |
-| `docker compose up -d`                | start the database                           |
-| `docker compose down`                 | stop it (**data survives**)                  |
-| `docker compose down -v`              | ⚠️ stop **and delete all database data**     |
+| Command                                                      | Description                                                                                                                                     |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run start:dev`                                          | API with hot reload                                                                                                                             |
+| `npm test`                                                   | Jest unit tests                                                                                                                                 |
+| `npm run test:e2e`                                           | Supertest end-to-end tests                                                                                                                      |
+| `npm run test:cov`                                           | coverage report                                                                                                                                 |
+| `npm run schema:generate`                                    | regenerate `schema.gql` (no database needed)                                                                                                    |
+| `npm run schema:check`                                       | fail if the committed `schema.gql` is stale                                                                                                     |
+| `npm run migration:generate -- src/database/migrations/Name` | diff entities against the live DB and write a migration                                                                                         |
+| `npm run migration:create -- src/database/migrations/Name`   | create an EMPTY migration — needed when there is nothing to diff (no entities yet, or a change TypeORM cannot infer such as `CREATE EXTENSION`) |
+| `npm run migration:run`                                      | apply pending migrations                                                                                                                        |
+| `npm run migration:revert`                                   | undo the last migration                                                                                                                         |
+| `docker compose up -d`                                       | start the database                                                                                                                              |
+| `docker compose down`                                        | stop it (**data survives**)                                                                                                                     |
+| `docker compose down -v`                                     | ⚠️ stop **and delete all database data**                                                                                                        |
+
+> **Note the `--`.** `npm run migration:generate --name=X` does not work: npm treats
+> `--name=X` as its own config and passes nothing on, so TypeORM exits with
+> `Not enough non-option arguments`. The path must come after a bare `--`.
+>
+> `migration:generate` also refuses to run when there is nothing to diff, which is the
+> situation whenever no entities exist yet — use `migration:create` then.
 
 ---
 

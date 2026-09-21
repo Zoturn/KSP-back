@@ -378,15 +378,70 @@ migration:run --help` directly rather than assume). Verified instead by actually
 
 ## 6. Cross-cutting verification
 
-- [ ] 6.1 Write `test/schema-drift.e2e-spec.ts` per `LEARNING/01-graphql.md` §10: load the
+- [x] 6.1 Write `test/schema-drift.e2e-spec.ts` per `LEARNING/01-graphql.md` §10: load the
       running schema via `GraphQLSchemaHost`, print it sorted, and assert it matches the
       committed `schema.gql` byte-for-byte. Verify it passes on a clean build and would fail if
       `schema.gql` were manually edited (test this by hand once, then revert the edit).
-- [ ] 6.2 Run the full verification sequence end-to-end on a **fresh** `docker compose down -v` + `up -d` + `migration:run` + `start:dev` to confirm `README.md`'s "Getting started"
+      Both failure modes were provoked deliberately rather than assumed: 1. **Hand-edited `schema.gql`** — injected a fake `tamperedField: Int`; the test failed
+      and named that exact line. Reverted, green again. 2. **A resolver registered in `AppModule` but missing from `schema.generate.ts`'s
+      hand-maintained `RESOLVERS` list** — and this is the finding that matters:
+      `npm run schema:check` **exited 0**. It is blind by construction, because it builds
+      the schema from that list instead of the module graph (deliberately, so it can run
+      without Postgres). The pre-commit hook calls the same generator, so **it is blind
+      too**. The drift e2e caught it immediately (`+ tempProbe: String!`).
+      So the two guards that felt like the safety net for the cross-repo contract would
+      both have let a real drift through; this test is the only one that closes it. Probe
+      resolver fully reverted afterwards.
+      One correction to `testing.md`: its prescribed snippet compares `printSchema(...)`
+      against the file directly, which cannot pass — the committed file is
+      `GRAPHQL_SDL_FILE_HEADER + printSchema(...)`, so the banner alone fails the comparison.
+      The test imports that exported constant rather than retyping the banner.
+- [x] 6.2 Run the full verification sequence end-to-end on a **fresh** `docker compose down -v` + `up -d` + `migration:run` + `start:dev` to confirm `README.md`'s "Getting started"
       steps are accurate as written. Fix the README if any step was wrong or missing.
-- [ ] 6.3 Confirm every spec scenario in `specs/service-health/spec.md` and
+      **Done against a genuinely empty database** (volume destroyed, `Did not find any
+relations`). Every documented step worked as written: `up -d` reached `healthy`,
+      `migration:run` created the migrations table and applied `AddExtensions` in one
+      transaction, `start:dev` mapped exactly `{/api/health, GET}` and `{/graphql, POST}`,
+      and all four documented URLs answered — health 200 with `database: up`, `apiStatus`
+      200, GraphiQL 200, pgAdmin 302 (its login redirect). Full suite green against the
+      fresh DB: unit 13/13, e2e 8/8, `schema:check` 0, lint 0. `start:dev` left `schema.gql`
+      unchanged, confirming the non-test write path still produces identical output.
+      **One deviation:** used `docker compose down` + `docker volume rm ksp_pgdata` rather
+      than `down -v`, which would also have wiped the `ksp_pgadmin` volume holding the
+      developer's saved pgAdmin server connection. The database reset — the point of this
+      task — was identical; the pgAdmin bootstrap path is untested as a result.
+      **One real README bug found, and it was in a command rather than a step:** the
+      commands table documented `npm run migration:generate --name=X`, which cannot work —
+      npm consumes `--name=X` as its own config, so TypeORM receives no path and exits with
+      `Not enough non-option arguments` (reproduced, not reasoned about). Corrected to the
+      `-- <path>` form, and added the missing `migration:create` row, which is the command
+      actually needed while no entities exist (see task 4.2's correction to design.md #4).
+- [x] 6.3 Confirm every spec scenario in `specs/service-health/spec.md` and
       `specs/graphql-api/spec.md` has a corresponding passing test or manual verification
       performed in tasks 4-5 above. Note any gap and add a task to close it before proceeding.
+      **All 13 scenarios mapped. service-health (6/6) fully covered by `health.e2e-spec.ts`:**
+      up-and-reachable and database-reachable by "reports 200 with a passing database check",
+      no-authentication by "requires no Authorization header", database-unreachable and
+      degraded by "reports 503 Service Unavailable", fully-healthy by the 200 assertion.
+      **graphql-api: 3 were gaps, now closed; 1 is deferred with reason.** - _Developer opens the interactive explorer_ — was manual-only. Now an e2e test
+      (`GET /graphql` with an HTML `Accept` header → 200 + HTML content-type). Asserted
+      over HTTP rather than by reading `graphiql: !isProduction`, because the config being
+      right and the UI actually being served are different claims. - _Schema file can be produced without a database_ — was manual-only and untested since
+      task 4.4. **Re-verified properly this time by stopping the Postgres container** and
+      running `schema:generate`: it succeeded and produced byte-identical output. Left as a
+      recorded manual check rather than a test, since it asserts something about a
+      standalone script, not about the running app. - _Response is always transport-successful_ — **the spec itself was wrong.** It claimed
+      any syntactically valid request returns 200. `{ fieldThatDoesNotExist }` is
+      syntactically valid, fails validation, and returns **400**. Split the requirement into
+      an execution-phase scenario (200 + `errors`) and a parse/validation-phase one (400 +
+      `errors`), matching the correction already applied to `graphql.md`, `testing.md` and
+      `README.md` — this spec was the last copy still asserting the wrong rule. Added an
+      e2e test pinning the 400. - **Deferred, with a task:** the execution-phase half (a valid document whose resolver
+      fails → 200 with `errors`) has no test, because **no resolver in the app can currently
+      fail** — `apiStatus` returns a constant. The first code that can produce this is
+      Phase 5's auth guards. `testing.md` already requires those tests to assert on
+      `errors[0].extensions.code` rather than HTTP status, so the requirement is carried
+      there rather than left silent. **Phase 5 must not close without it.**
 
 ## 7. Learning documentation
 
@@ -395,4 +450,8 @@ migration:run --help` directly rather than assume). Verified instead by actually
       modules need the latter; what `@Injectable()` actually does; the DI container at a level
       of depth matching `00-docker.md` and `01-graphql.md`. Write it to be read _before_ section
       2-3 implementation, so future readers of this change can learn from it in the intended order.
-- [ ] 7.2 Update `README.md`'s "Getting started" section if task 6.2 surfaced any corrections.
+- [x] 7.2 Update `README.md`'s "Getting started" section if task 6.2 surfaced any corrections.
+      The "Getting started" steps themselves needed no change — all six ran correctly against
+      an empty database. The correction landed in the **Commands** table instead:
+      `migration:generate --name=X` replaced with the working `-- <path>` form, plus the
+      missing `migration:create` row and a note on why npm swallows `--name=X`.
