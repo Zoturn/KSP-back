@@ -6,19 +6,38 @@
 
 ## 1. Shared building blocks
 
-- [ ] 1.1 Install `dataloader` and confirm `npm ls dataloader` reports a single version and
+- [x] 1.1 Install `dataloader` and confirm `npm ls dataloader` reports a single version and
       `npm audit` reports 0 vulnerabilities. Verify `npm run build` is still clean with the
       dependency present but unwired.
-- [ ] 1.2 Create `src/common/graphql/page-input.ts` (`PageInput` with `page` and `limit`,
+      **`dataloader@2.2.3`**, single version, 0 vulnerabilities, build clean.
+      **Gap in this task as written:** it listed only `dataloader`, but `PageInput`'s
+      `@Min`/`@Max` need **`class-validator`** and the `ValidationPipe` needs
+      **`class-transformer`** — neither was a declared dependency (both were present only as
+      transitive deps of `@nestjs/common`, which is not something to rely on). Installed
+      explicitly: `class-validator@0.15.1`, `class-transformer@0.5.1`, deduped, 0
+      vulnerabilities.
+- [x] 1.2 Create `src/common/graphql/page-input.ts` (`PageInput` with `page` and `limit`,
       `@Min(1)`, `@Max(100)`, sensible defaults) and `src/common/graphql/paginated.ts` (the
       `Paginated<T>()` factory from design Decision #4, memoised per type). Unit-test that the
       factory returns the **same class** when called twice with the same `T` — calling it twice
       unmemoised registers two types with one name and schema generation fails, which is the
       failure this test exists to catch.
-- [ ] 1.3 Create `CommonModule` exporting a request-scoped `DataLoaderService` with no loaders
+      Done, 8 tests. The memoisation test asserts **identity** (`toBe`), not structural
+      equality — two separately built classes would be structurally identical and the test
+      would pass while the duplicate-type bug remained. `PageInput` is validated by running
+      `class-validator` rather than by inspecting decorators, so the rules are proven to fire.
+- [x] 1.3 Create `CommonModule` exporting a request-scoped `DataLoaderService` with no loaders
       yet (added in 5.1). Verify with a unit test that `module.get()` **throws** for it and
       `await module.resolve()` succeeds — that asymmetry is the practical face of `Scope.REQUEST`
       and will explain later test failures (`nestjs.md`, provider scope).
+      Done, 4 tests. **One of them was initially passing for the wrong reason, and was
+      rewritten.** The "is exported" test first imported `CommonModule` into the testing module
+      and resolved the service directly — which passes with or without the `exports` line,
+      because `TestingModule.get`/`resolve` are non-strict and search the whole container.
+      Proved that by deleting `exports` and watching it stay green. It now goes through a real
+      `Consumer` provider in a separate `ConsumerModule`, and re-verified the honest way:
+      without `exports` it fails with `Nest can't resolve dependencies of the Consumer (?)`,
+      the exact boot failure the line prevents.
 
 ## 2. Entities and the migration
 
