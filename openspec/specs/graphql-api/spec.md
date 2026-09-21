@@ -1,6 +1,7 @@
 # graphql-api Specification
 
 ## Purpose
+
 Provides the single query surface for the whole application and publishes a machine-readable
 contract that downstream clients — starting with `ksp-frontend` — generate typed code from.
 

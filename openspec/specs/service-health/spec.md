@@ -1,6 +1,7 @@
 # service-health Specification
 
 ## Purpose
+
 Lets operators, container orchestrators, and developers determine whether the service is
 running and able to reach its database, without inspecting logs.
 
