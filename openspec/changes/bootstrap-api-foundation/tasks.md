@@ -445,11 +445,30 @@ relations`). Every documented step worked as written: `up -d` reached `healthy`,
 
 ## 7. Learning documentation
 
-- [ ] 7.1 Write `LEARNING/02-nestjs-fundamentals.md` covering: modules, providers, and
+- [x] 7.1 Write `LEARNING/02-nestjs-fundamentals.md` covering: modules, providers, and
       dependency injection; the `forRoot` vs `forRootAsync` distinction and why config-dependent
       modules need the latter; what `@Injectable()` actually does; the DI container at a level
       of depth matching `00-docker.md` and `01-graphql.md`. Write it to be read _before_ section
       2-3 implementation, so future readers of this change can learn from it in the intended order.
+      **Written (360 lines), matching the depth of `00-docker.md` and `01-graphql.md`.** Eleven
+      sections: what Nest adds over Express; the module/provider/controller triad; what
+      `@Injectable()` actually does (it emits `design:paramtypes` — the class IS the token, and
+      `emitDecoratorMetadata` is why any of it works); singleton-by-default and why that makes
+      a shared DataLoader a data-leak bug; `providers` vs `exports` vs `imports` including how
+      to read the error message; dynamic modules and what `forRoot` really returns;
+      `forRoot` vs `forRootAsync` with `inject` mapping to factory arguments **by position**;
+      `isGlobal` as a deliberate encapsulation hole and when it is honest; request scope
+      bubbling; and bootstrap.
+      Section 10 is grounded in this change's own bug: `createNestApplication()` never runs
+      `bootstrap()`, which is why `app.setup.ts` and `test/create-test-app.ts` exist, and why
+      `APP_*` providers beat `app.useGlobal*()`. Section 11 closes on mocking at the boundary
+      you are simulating rather than above it — the reasoning behind the DataSource stub.
+      **Note: `LEARNING/` is now gitignored**, so the note itself is not in the repo; only this
+      record of it is.
+      **Also corrected `01-graphql.md` §6 while here** — it was titled "Errors: everything is
+      HTTP 200" and was the last surviving copy of the rule already fixed in `graphql.md`,
+      `testing.md`, `README.md` and the capability spec. Now carries the same
+      execution-vs-validation table.
 - [x] 7.2 Update `README.md`'s "Getting started" section if task 6.2 surfaced any corrections.
       The "Getting started" steps themselves needed no change — all six ran correctly against
       an empty database. The correction landed in the **Commands** table instead:
