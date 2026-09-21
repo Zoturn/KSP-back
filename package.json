@@ -18,7 +18,7 @@
     "test": "npm run jest",
     "test:watch": "npm run jest -- --watch",
     "test:cov": "npm run jest -- --coverage",
-    "test:debug": "node --experimental-vm-modules --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
+    "test:debug": "npm run jest -- --runInBand --inspect-brk",
     "test:e2e": "npm run jest -- --config ./test/jest-e2e.config.js",
     "schema:generate": "ts-node -r tsconfig-paths/register src/schema.generate.ts",
     "schema:check": "npm run schema:generate && git diff --exit-code schema.gql",

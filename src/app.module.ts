@@ -48,7 +48,17 @@ import { HealthModule } from './health/health.module';
           // @ObjectType/@InputType/@Resolver in the app at boot and WRITES this file. We
           // never hand-edit it — see graphql.md. Kept at the repo root (not under src/) so
           // the dev-mode file watcher never sees it change and restart in a loop.
-          autoSchemaFile: join(process.cwd(), 'schema.gql'),
+          //
+          // Under test, `true` builds the schema in memory and writes NOTHING. Passing a
+          // path makes every `app.init()` truncate-and-rewrite the committed contract file,
+          // and Jest runs spec files in separate worker processes — so two e2e boots race
+          // on one path. It is harmless only while nothing reads the file mid-suite, and
+          // task 6.1's schema-drift guard does exactly that, which would have turned this
+          // into an intermittent failure blamed on the drift test rather than on this line.
+          // Nothing is lost: `npm run schema:generate` owns the file, and the drift guard
+          // reads the live schema through `GraphQLSchemaHost` as testing.md prescribes.
+          autoSchemaFile:
+            nodeEnv === 'test' ? true : join(process.cwd(), 'schema.gql'),
 
           // Alphabetises types and fields in the emitted SDL. Without it, the committed
           // schema.gql churns every time a class is reordered, producing meaningless diffs

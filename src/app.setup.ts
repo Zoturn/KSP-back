@@ -17,11 +17,24 @@ import type { INestApplication } from '@nestjs/common';
  * real server serves `/api/health` — a green test proving nothing about the deployed route.
  * A test that passes against a path production doesn't serve is worse than no test.
  *
- * So `main.ts` and every e2e spec both call this one function. When Phase 5 adds the global
- * `ValidationPipe` and the GraphQL exception filter, they go here and the tests inherit them
- * automatically — there is no second copy to remember to update.
+ * So `main.ts` and every e2e spec both call this one function — in practice via
+ * `test/create-test-app.ts`, which is the only supported way a spec builds an app, so the
+ * call cannot be forgotten.
+ *
+ * WHAT DOES *NOT* BELONG HERE
+ * -----------------------------
+ * Phase 5's global `ValidationPipe` and GraphQL exception filter. `nestjs.md` is explicit
+ * that app-wide providers are registered in `AppModule` through the `APP_PIPE`/`APP_FILTER`
+ * DI tokens rather than `app.useGlobal*()` — and that is the stronger option here for the
+ * very reason this file exists: providers are part of the module graph, so
+ * `createNestApplication()` applies them with no call for anyone to remember. Deliberately
+ * leaving this function holding only `setGlobalPrefix`, which genuinely cannot be a
+ * provider, keeps the forgettable surface as small as it can be.
+ *
+ * Generic in `T` so callers keep their concrete application type (`INestApplication<App>`
+ * in Supertest specs) instead of each one re-asserting it with `as`.
  */
-export function configureApp(app: INestApplication): INestApplication {
+export function configureApp<T extends INestApplication>(app: T): T {
   // Prefixes the REST routes (`/api/health`, and `/api/uploads/*` later) without touching
   // `/graphql`. @nestjs/graphql registers its route through the Apollo driver rather than
   // Nest's HTTP router, so `setGlobalPrefix` does not move it — it stays at `/graphql`,

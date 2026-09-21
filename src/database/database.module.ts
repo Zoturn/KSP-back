@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import type { DatabaseConfig } from '../config/configuration';
+import type { AppConfig, DatabaseConfig } from '../config/configuration';
 
 /**
  * Wires the RUNNING application's connection to PostgreSQL.
@@ -29,6 +29,7 @@ import type { DatabaseConfig } from '../config/configuration';
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
         const db = configService.getOrThrow<DatabaseConfig>('database');
+        const { nodeEnv } = configService.getOrThrow<AppConfig>('app');
 
         return {
           type: 'postgres' as const,
@@ -56,6 +57,18 @@ import type { DatabaseConfig } from '../config/configuration';
           // LEARNING/00-docker.md and database.md for why — synchronize diffs entities
           // against the live schema and alters it automatically, with no reviewable history.
           synchronize: false,
+
+          // TypeORM defaults to 10 retries at 3s apart, so an unreachable database takes
+          // ~30 seconds to report a failure it already knew about on the first attempt.
+          // Nothing learns anything from attempts 2-10 locally: Postgres runs in Docker on
+          // this machine, so it is either up or it isn't. That default is tuned for a
+          // production cluster where the database may legitimately still be starting.
+          //
+          // Keeping it low is what lets `npm run start:dev` and the e2e suite fail fast with
+          // the real `ECONNREFUSED` instead of stalling. Production keeps the patient
+          // behaviour, where a rolling restart genuinely can outlast a few retries.
+          retryAttempts: nodeEnv === 'production' ? 10 : 1,
+          retryDelay: 3000,
         };
       },
     }),

@@ -3,15 +3,14 @@
  * (the `"test:e2e"` script in package.json) — e2e specs are not auto-discovered by the
  * default unit config.
  *
- * `transform` comes from `../jest.shared.js`, which also backs `jest.config.js`.
+ * `transform`, `moduleFileExtensions` and `testEnvironment` come from `../jest.shared.js`,
+ * which also backs `jest.config.js` and carries the --experimental-vm-modules guard.
  */
 const shared = require('../jest.shared');
 
 module.exports = {
   ...shared,
 
-  moduleFileExtensions: ['js', 'json', 'ts'],
   rootDir: '.',
-  testEnvironment: 'node',
   testRegex: '.e2e-spec.ts$',
 };

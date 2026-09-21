@@ -2,31 +2,51 @@
  * Jest config shared between the unit-test config (`jest.config.js`) and the e2e config
  * (`test/jest-e2e.config.js`).
  *
- * WHY THIS IS NEARLY EMPTY NOW (it used to be the opposite)
- * ----------------------------------------------------------
- * This file once carried a `transformIgnorePatterns` allowlist plus a ts-jest
- * `module: CommonJS` override, and both configs additionally carried a `moduleNameMapper`
- * pointing at a hand-written stub — all of it to make `@nestjs/*` packages that ship ESM
- * (`config`, `typeorm`, `terminus`) loadable under Jest's CommonJS runtime. See
- * `.claude/rules/nestjs.md` for the full history.
+ * WHY THIS FILE EXISTS
+ * ---------------------
+ * Partly to share settings, but mostly for the guard below.
  *
- * All of it is gone. Jest 30 can `require()` ESM natively, gated on **two** conditions that
- * are now both met:
+ * Several `@nestjs/*` packages ship native ESM (`config@12`, `typeorm@12`, `terminus@12`)
+ * while the framework is still CommonJS. Jest 30 can load them natively, but only on
+ * Node >= 24.9 AND only when Node is started with `--experimental-vm-modules` — without the
+ * flag `vm.SourceTextModule` does not exist, so Jest's own capability check reads false and
+ * every affected suite dies with `Must use import to load ES Module`.
  *
- * 1. **Node >= 24.9** — Jest needs `vm.SourceTextModule.prototype.hasAsyncGraph` to prove a
- *    module graph is synchronously evaluable. Pinned by `engines` in `package.json` and
- *    `.nvmrc`.
- * 2. **`--experimental-vm-modules`** — without this flag `vm.SourceTextModule` is `undefined`
- *    entirely, so condition 1 reads as false no matter which Node is running. This is the
- *    non-obvious half: upgrading Node alone changes nothing. The flag is applied once, in
- *    package.json's `"jest"` script, which every other test script delegates to.
+ * That flag lives in package.json's `"jest"` script, which every test script delegates to.
+ * But a script is a convention, not a guarantee: `npx jest`, an IDE's Jest runner, or a
+ * future CI step calling Jest directly all bypass it and silently reproduce the original
+ * error — whose diagnosis cost real time and is no longer in the config as a comment.
  *
- * Only the ts-jest transform is genuinely shared now, but the file stays: the duplication it
- * prevents already caused one silent regression (a fix applied to the unit config but not the
- * e2e one — `tasks.md` task 3.1/3.2), and that risk returns the moment there are two copies.
+ * So rather than trusting the convention, this file makes its absence self-diagnosing. It is
+ * the one module every entry point loads (both configs `require()` it, and bare `jest` finds
+ * `jest.config.js`), which makes it the only place a check like this covers everything.
  */
+const { SourceTextModule } = require('node:vm');
+
+if (typeof SourceTextModule === 'undefined') {
+  throw new Error(
+    [
+      'Jest must be started with `node --experimental-vm-modules`.',
+      '',
+      'Without it, Node does not expose vm.SourceTextModule, Jest falls back to its',
+      'CommonJS-only loader, and every suite importing @nestjs/config, @nestjs/typeorm',
+      'or @nestjs/terminus fails with "Must use import to load ES Module".',
+      '',
+      'Run the npm scripts (`npm test`, `npm run test:e2e`) rather than jest directly —',
+      'they all delegate to the "jest" script, which supplies the flag.',
+      `(Also requires Node >= 24.9; this process is ${process.version}.)`,
+    ].join('\n'),
+  );
+}
+
 module.exports = {
+  // Shared because they are genuinely identical in both configs — the pair most likely to
+  // drift silently if hand-copied. `rootDir`, `testRegex` and coverage settings stay out:
+  // those legitimately differ between the unit and e2e runs.
+  moduleFileExtensions: ['js', 'json', 'ts'],
+  testEnvironment: 'node',
+
   transform: {
-    '^.+\\.(t|j)s$': ['ts-jest', {}],
+    '^.+\\.(t|j)s$': 'ts-jest',
   },
 };

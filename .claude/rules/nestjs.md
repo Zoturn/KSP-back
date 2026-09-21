@@ -97,17 +97,20 @@ Jest tests `vm.SourceTextModule.prototype.hasAsyncGraph`, and **without the flag
 `vm.SourceTextModule` is `undefined` entirely** — so the check reads false on Node 26 just as
 it does on Node 22. Upgrading Node alone changes nothing.
 
-**If `Must use import to load ES Module` ever comes back, check these in order:**
+**You should not be able to hit `Must use import to load ES Module` any more.** `jest.shared.js`
+— the one module every entry point loads, since both configs `require()` it and bare `jest`
+discovers `jest.config.js` — throws first with an explicit message if `vm.SourceTextModule` is
+missing. That deliberately converts the old symptom into a named cause, because a script is a
+convention and `npx jest`, an IDE runner or a CI step can all bypass it.
 
-1. `node -v` — is it >= 24.9? nvm-windows switches a machine-wide symlink, so an `nvm use 22`
-   for some unrelated project silently takes this repo's tests with it. `nvm use 24` restores
-   it; `.nvmrc` records the intent.
-2. Is the command going through `npm run test` / `test:e2e`? Invoking `npx jest` directly
-   bypasses the flag and reproduces the old error exactly.
+If you see **that guard's** message, the fix is in it: run the npm scripts, and check
+`node -v >= 24.9`. nvm-windows switches a machine-wide symlink, so an `nvm use 22` for some
+unrelated project silently takes this repo's tests with it; `nvm use 24` restores it, and
+`.nvmrc` records the intent.
 
-Only if both are satisfied is it a genuinely new problem. Do **not** reintroduce
-`transformIgnorePatterns` or a stub as a reflex — that trades one line of config for a mock
-that silently goes stale, which is what we just spent this effort removing.
+If you somehow see the _original_ error instead, that is a genuinely new problem. Do **not**
+reintroduce `transformIgnorePatterns` or a stub as a reflex — that trades one line of config
+for a mock that silently goes stale, which is what we spent this effort removing.
 
 **A note on how this was diagnosed, because the shortcut failed:** the error message names
 `transformIgnorePatterns` as the fix, and for `@nestjs/config` it genuinely was. Following

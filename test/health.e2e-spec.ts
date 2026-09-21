@@ -1,67 +1,46 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import { getDataSourceToken } from '@nestjs/typeorm';
+import { HealthCheckResult } from '@nestjs/terminus';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { AppModule } from '../src/app.module';
-import { configureApp } from '../src/app.setup';
-
-/**
- * Terminus's response shape. Declared locally because Supertest types `res.body` as `any`,
- * and asserting straight off an `any` both trips `no-unsafe-member-access` and silently
- * tolerates a typo'd property name — `expect(res.body.inof.database)` would read `undefined`
- * and the assertion would fail for a reason that has nothing to do with the endpoint.
- */
-interface HealthIndicatorResult {
-  status: 'up' | 'down';
-  message?: string;
-  responseTime?: number;
-}
-
-interface HealthCheckResponse {
-  status: 'ok' | 'error' | 'shutting_down';
-  info: Record<string, HealthIndicatorResult>;
-  error: Record<string, HealthIndicatorResult>;
-  details: Record<string, HealthIndicatorResult>;
-}
+import { createTestApp } from './create-test-app';
+import { createStubDataSource } from './stub-data-source';
 
 /**
  * e2e coverage for the one REST route in a GraphQL-only API (`src/health/health.controller.ts`
  * explains why it is REST at all).
  *
- * Both suites build the app through `configureApp()` — the same function `main.ts` calls — so
- * they exercise `/api/health`, the path production actually serves. Hitting `/health` instead
- * would pass just as green and prove nothing; see `src/app.setup.ts`.
+ * `HealthCheckResult` is imported rather than hand-declared. Supertest types `res.body` as
+ * `any`, so naming the shape is what keeps these assertions type-checked — but writing out a
+ * local copy of it was worse than no types: Terminus's own `status` union includes `degraded`,
+ * which a hand-copy silently omits, and its `HealthIndicatorResult` is the whole keyed map
+ * rather than one entry, so a local interface of the same name would have quietly meant
+ * something different from the library's.
  */
 describe('Health endpoint (e2e)', () => {
   describe('with the database reachable', () => {
     let app: INestApplication<App>;
 
+    /**
+     * The one suite that deliberately talks to real Postgres, so it needs
+     * `docker compose up -d` first — verifying an actual connection is the entire point of a
+     * database health check, and stubbing it here would leave nothing tested.
+     */
     beforeAll(async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [AppModule],
-      }).compile();
-
-      app = configureApp(
-        moduleFixture.createNestApplication(),
-      ) as INestApplication<App>;
-      await app.init();
+      app = await createTestApp();
     });
 
     afterAll(async () => {
-      await app.close();
+      await app?.close();
     });
 
-    // This suite needs Postgres up (`docker compose up -d`) — it is a genuine integration
-    // test of the real connection, which is the entire point of a database health check.
     it('reports 200 with a passing database check', async () => {
       const res = await request(app.getHttpServer()).get('/api/health');
-      const body = res.body as HealthCheckResponse;
+      const body = res.body as HealthCheckResult;
 
       expect(res.status).toBe(200);
       expect(body.status).toBe('ok');
-      expect(body.info.database.status).toBe('up');
-      // Terminus reports failures in `error`, not by omitting them from `info` — an empty
+      expect(body.details.database.status).toBe('up');
+      // Terminus reports failures in `error`, not by omitting them from `details` — an empty
       // object here is the assertion that nothing failed.
       expect(body.error).toEqual({});
     });
@@ -97,53 +76,35 @@ describe('Health endpoint (e2e)', () => {
      * issues `SELECT 1`, the real `HealthCheckService` aggregates the failure, and Terminus's
      * real error mapping produces the status code. Only the driver's socket is replaced —
      * which is precisely the layer "database unreachable" means.
-     *
-     * A rejecting `query` reproduces an unreachable server faithfully: `node-postgres`
-     * surfaces a refused connection as a rejected query, not as a thrown constructor.
      */
     beforeAll(async () => {
-      const unreachableDataSource = {
-        // Drives the `switch` in TypeOrmHealthIndicator.pingDb — 'postgres' takes the
-        // default branch and calls `query('SELECT 1')`, the path the real app uses.
-        options: { type: 'postgres' },
-        isInitialized: true,
-        query: jest
-          .fn()
-          .mockRejectedValue(new Error('connect ECONNREFUSED 127.0.0.1:5434')),
-        // TypeOrmCoreModule calls destroy() on shutdown; without it app.close() throws and
-        // masks the real assertion result.
-        destroy: jest.fn().mockResolvedValue(undefined),
-      };
-
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [AppModule],
-      })
-        // Overriding the token also means TypeOrmModule never opens a real connection, so
-        // this suite passes with Docker stopped entirely.
-        .overrideProvider(getDataSourceToken())
-        .useValue(unreachableDataSource)
-        .compile();
-
-      app = configureApp(
-        moduleFixture.createNestApplication(),
-      ) as INestApplication<App>;
-      await app.init();
+      app = await createTestApp({
+        dataSource: createStubDataSource({
+          // node-postgres surfaces a refused connection as a rejected query, not as a thrown
+          // constructor — so this reproduces an unreachable server faithfully.
+          query: jest
+            .fn()
+            .mockRejectedValue(
+              new Error('connect ECONNREFUSED 127.0.0.1:5434'),
+            ),
+        }),
+      });
     });
 
     afterAll(async () => {
-      await app.close();
+      await app?.close();
     });
 
     it('reports 503 Service Unavailable', async () => {
       const res = await request(app.getHttpServer()).get('/api/health');
-      const body = res.body as HealthCheckResponse;
+      const body = res.body as HealthCheckResult;
 
       // The specific code matters, not merely "non-2xx": 503 is what load balancers and
       // Kubernetes probes interpret as "pull this instance out of rotation". A 500 would
       // read as an application bug instead of a dependency being down.
       expect(res.status).toBe(503);
       expect(body.status).toBe('error');
-      expect(body.error.database.status).toBe('down');
+      expect(body.error?.database?.status).toBe('down');
     });
   });
 });
