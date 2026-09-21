@@ -41,22 +41,54 @@
 
 ## 2. Entities and the migration
 
-- [ ] 2.1 Write `src/catalog/entities/{category,product,product-image}.entity.ts` exactly per
+- [x] 2.1 Write `src/catalog/entities/{category,product,product-image}.entity.ts` exactly per
       design's schema table: UUID PKs via `@PrimaryGeneratedColumn('uuid')`, `citext` slugs,
       `price_cents integer` + `currency char(3)`, `timestamptz` via
       `@CreateDateColumn`/`@UpdateDateColumn`, self-referencing nullable `parent_id` on
       `Category` (adjacency list — **not** `@Tree`, see Decision #1). No `@ObjectType()` anywhere
       in these files. Verify `npm run build` compiles.
-- [ ] 2.2 Generate the migration with `npm run migration:generate -- src/database/migrations/AddCatalogTables`
+- [x] 2.2 Generate the migration with `npm run migration:generate -- src/database/migrations/AddCatalogTables`
       (note the `--`; see README). **Read the generated SQL**, then hand-add what the differ
       omits: `CHECK (price_cents >= 0)`, the partial index
       `(created_at DESC, id DESC) WHERE is_published`, and FK indexes on `categories.parent_id`,
       `products.category_id`, `product_images.(product_id, position)`. Confirm the `ON DELETE`
       rules match design exactly — `RESTRICT`, `SET NULL`, `CASCADE` respectively.
-- [ ] 2.3 Verification: `npm run migration:run`, then inspect the live schema with `psql` and
+      **The design's prediction was wrong in the reassuring direction, and right in a way it
+      did not anticipate.** Expected: the differ omits `CHECK` and partial indexes, add them by
+      hand. Actual: because the entities carry `@Check` and `@Index(..., { where })`
+      decorators, the generator emitted **all** of it correctly first time — the CHECK, the
+      partial index `WHERE "is_published"`, both FK indexes and the composite image index, with
+      `RESTRICT`/`SET NULL`/`CASCADE` exactly as specified. Nothing needed hand-adding.
+      **What reading the SQL actually caught was worse:** every table came out with
+      `DEFAULT uuid_generate_v4()` — that is **uuid-ossp**, which no migration of ours installs
+      (`AddExtensions` installs `pgcrypto` and `citext`). The migration would have failed on any
+      database TypeORM had not already touched.
+      And the reason it did _not_ fail locally is the real finding: TypeORM's Postgres driver
+      runs `CREATE EXTENSION IF NOT EXISTS "uuid-ossp"` **itself, on connect**, whenever an
+      entity has a uuid column (`PostgresDriver.js`, `afterConnect`). The extension was created
+      as a side effect of running `migration:generate` — ORM-performed DDL outside any
+      migration, which is precisely what `database.md`'s migrations-only rule exists to stop,
+      and it was invisible until the extension list was checked.
+      Fixed at the source rather than by patching the SQL: `uuidExtension: 'pgcrypto'` in
+      **both** `data-source.ts` (CLI) and `database.module.ts` (app). Dropped the stray
+      extension, regenerated, and confirmed the output is `DEFAULT gen_random_uuid()` **and
+      that uuid-ossp did not come back** — proving the silent DDL is actually stopped, not just
+      the default changed. Recorded in `database.md`.
+- [x] 2.3 Verification: `npm run migration:run`, then inspect the live schema with `psql` and
       confirm every constraint and index above actually exists (the point is to check the
       database, not the migration file). Then `npm run migration:revert` and confirm all three
       tables are gone, and re-run. A migration that cannot be reverted is found now, not later.
+      Verified against the **live database**, not the migration file. All 9 indexes are present,
+      including the partial one on published products. The price check constraint, the three
+      foreign keys with their intended delete rules (restrict, set null, cascade), the
+      `gen_random_uuid()` id defaults, `citext` slugs and `timestamptz` timestamps all match
+      the design.
+      Then probed that the constraints **behave**, because existing and working are different
+      claims. A negative price was rejected by the check constraint. Inserting the slug `Dup`
+      and then `dup` was rejected as a duplicate, proving citext case-insensitivity is real
+      rather than assumed. Deleting a category that still had children was rejected by the
+      restrict rule.
+      `migration:revert` dropped all three tables cleanly and `migration:run` recreated them.
 
 ## 3. Models and mappers
 

@@ -56,6 +56,18 @@ import type { AppConfig, DatabaseConfig } from '../config/configuration';
           // NON-NEGOTIABLE per database.md: never true, not even in development. See
           // LEARNING/00-docker.md and database.md for why — synchronize diffs entities
           // against the live schema and alters it automatically, with no reviewable history.
+          // Use pgcrypto's gen_random_uuid() for @PrimaryGeneratedColumn('uuid').
+          //
+          // WITHOUT THIS, TypeORM DEFAULTS TO uuid-ossp — and worse, its Postgres driver runs
+          // `CREATE EXTENSION IF NOT EXISTS "uuid-ossp"` ITSELF on connect, whenever any entity
+          // has a uuid column (PostgresDriver, "afterConnect"). That is the ORM performing DDL
+          // outside a migration, which is exactly what database.md's migrations-only rule
+          // exists to prevent: an extension no migration creates, invisible to review, and
+          // present only because something happened to connect first.
+          //
+          // Caught when the first entity migration generated `DEFAULT uuid_generate_v4()`
+          // while our AddExtensions migration installs pgcrypto and citext only.
+          uuidExtension: 'pgcrypto' as const,
           synchronize: false,
 
           // TypeORM defaults to 10 retries at 3s apart, so an unreachable database takes
