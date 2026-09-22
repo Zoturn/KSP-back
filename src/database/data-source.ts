@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { DataSource } from 'typeorm';
+import { POSTGRES_SCHEMA_POLICY } from './postgres-policy';
 import { join } from 'node:path';
 
 /**
@@ -39,19 +40,6 @@ export default new DataSource({
   entities: [join(__dirname, '..', '**', '*.entity.{ts,js}')],
   migrations: [join(__dirname, 'migrations', '*.{ts,js}')],
 
-  // Same non-negotiable rule as database.module.ts — see database.md.
-  // Use pgcrypto's gen_random_uuid() for @PrimaryGeneratedColumn('uuid').
-  //
-  // WITHOUT THIS, TypeORM DEFAULTS TO uuid-ossp — and worse, its Postgres driver runs
-  // `CREATE EXTENSION IF NOT EXISTS "uuid-ossp"` ITSELF on connect, whenever any entity
-  // has a uuid column (PostgresDriver, "afterConnect"). That is the ORM performing DDL
-  // outside a migration, which is exactly what database.md's migrations-only rule
-  // exists to prevent: an extension no migration creates, invisible to review, and
-  // present only because something happened to connect first.
-  //
-  // Caught when the first entity migration generated `DEFAULT uuid_generate_v4()`
-  // while our AddExtensions migration installs pgcrypto and citext only.
-  uuidExtension: 'pgcrypto' as const,
-
-  synchronize: false,
+  // Schema-safety rules shared verbatim with database.module.ts — see postgres-policy.ts.
+  ...POSTGRES_SCHEMA_POLICY,
 });

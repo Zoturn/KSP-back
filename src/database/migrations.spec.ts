@@ -7,24 +7,22 @@ import { join } from 'node:path';
  * WHY THIS EXISTS
  * ----------------
  * TypeORM's Postgres driver defaults to **uuid-ossp** for `@PrimaryGeneratedColumn('uuid')`,
- * emitting `DEFAULT uuid_generate_v4()` — and, worse, running
- * `CREATE EXTENSION IF NOT EXISTS "uuid-ossp"` itself on connect, which is DDL performed
- * outside any migration. This project installs **pgcrypto** instead (`AddExtensions`), whose
- * function is `gen_random_uuid()`. See `database.md`.
+ * emitting `DEFAULT uuid_generate_v4()`. This project installs **pgcrypto** (`AddExtensions`),
+ * whose function is `gen_random_uuid()`. A migration reaching for the wrong one depends on an
+ * extension no migration creates: fine on any database the ORM has already touched, a hard
+ * failure on a genuinely fresh one — CI, a first clone, a deploy.
  *
- * The correction is `uuidExtension: 'pgcrypto'`, and it has to be set in **two** places —
- * `data-source.ts` (the CLI that generates migrations) and `database.module.ts` (the app).
- * Nothing makes those two agree. Drop it from either and the next generated migration quietly
- * reverts to `uuid_generate_v4()`, producing a migration that depends on an extension no
- * migration creates. It then works on any machine TypeORM has already connected to, and fails
- * on a genuinely fresh database — CI, a teammate's first clone, a production deploy.
+ * WHAT IT DOES AND DOES NOT COVER — the honest version
+ * ------------------------------------------------------
+ * An earlier draft of this comment claimed the spec guarded *config drift between the two
+ * connection files*. It never could: dropping `uuidExtension` from `database.module.ts` changes
+ * no migration file, because the app runs no migrations. That half is now fixed properly rather
+ * than tested around — both settings live once in `postgres-policy.ts` and are spread into both
+ * connections, so they cannot disagree.
  *
- * WHY IT ASSERTS AGAINST THE MIGRATION FILES RATHER THAN THE CONFIG
- * ------------------------------------------------------------------
- * The migrations are the artifact that actually ships. Checking them catches the drift
- * whichever config caused it, and would also catch a hand-written migration that reached for
- * the wrong function. Asserting `uuidExtension === 'pgcrypto'` in two files would instead be a
- * test that restates the code.
+ * What remains genuinely worth asserting is the **output**: a hand-written migration, or a
+ * regression in the CLI's own config, reaching for the wrong function. That is a real path this
+ * catches, and it catches it in the artifact that actually ships rather than in a setting.
  *
  * This replaces a one-off check typed into psql during task 2.3: that proved the schema was
  * right on that day and guarded nothing afterwards.
@@ -58,16 +56,16 @@ describe('migrations', () => {
     // Guards the positive direction too: a migration could avoid uuid_generate_v4 by dropping
     // the default entirely, which would leave inserts without an id rather than fixing
     // anything.
-    const uuidDefaults = sources.flatMap(({ file, sql }) =>
+    const uuidDefaults = sources.flatMap(({ sql }) =>
       [...sql.matchAll(/uuid NOT NULL DEFAULT ([a-z_]+\(\))/g)].map(
-        (match) => ({ file, fn: match[1] }),
+        (m) => m[1],
       ),
     );
 
     expect(uuidDefaults.length).toBeGreaterThan(0);
-    for (const { fn } of uuidDefaults) {
-      expect(fn).toBe('gen_random_uuid()');
-    }
+    // A Set rather than a loop: one assertion, and a failure message that names the offending
+    // function instead of just reporting which iteration failed.
+    expect([...new Set(uuidDefaults)]).toEqual(['gen_random_uuid()']);
   });
 
   it('creates pgcrypto, the extension those defaults depend on', () => {

@@ -24,6 +24,10 @@ export interface Paginated<T> {
  * claiming one GraphQL type name, and schema generation fails with a duplicate-type error —
  * at boot, far from the second call site that caused it. The cache makes the factory
  * idempotent, so importing it from two modules is safe.
+ *
+ * A plain `Map` rather than a `WeakMap` is deliberate: `@ObjectType()` already registers both
+ * classes in `@nestjs/graphql`'s module-level metadata storage for the life of the process, so
+ * a weak key would free nothing.
  */
 const pageTypeCache = new Map<Type<unknown>, Type<unknown>>();
 
@@ -36,27 +40,31 @@ const pageTypeCache = new Map<Type<unknown>, Type<unknown>>();
  * paginated list would otherwise need its own hand-written wrapper class — pure copy-paste
  * that drifts.
  *
- * The code-first escape hatch is `@ObjectType({ isAbstract: true })`, which means "reflect over
- * this class to collect its fields, but do not emit it as a schema type in its own right". The
- * subclass returned here is what gets emitted, under an explicit name. Without `isAbstract`,
- * the generic base itself would appear in the schema as a type nobody can use.
+ * THE NAME IS DERIVED, NOT PASSED
+ * ---------------------------------
+ * Our models are named `ProductModel` in code (so `catalog.mapper.ts` can import the entity
+ * and the model side by side without a collision) while the GraphQL type is `Product`. The
+ * `Model` suffix is stripped here so the page type comes out as `ProductPage`.
  *
- * @param classRef the item type, e.g. the `Product` model
- * @param name     the GraphQL type name; defaults to `<classRef.name>Page`. Pass it explicitly
- *                 when the class name differs from the schema name (our models are named
- *                 `ProductModel` in code but `Product` in the schema).
+ * This deliberately takes no `name` override. An earlier version accepted one, and it was a
+ * footgun twice over: the cache was keyed on `classRef` alone, so a second call with a
+ * different name silently returned the first class and discarded the new name; and it let a
+ * call site disagree with the `@ObjectType('Product')` on the model itself. The GraphQL name
+ * is a property of the model, not of each pagination call.
  */
-export function Paginated<T>(
-  classRef: Type<T>,
-  name?: string,
-): Type<Paginated<T>> {
+export function Paginated<T>(classRef: Type<T>): Type<Paginated<T>> {
   const cached = pageTypeCache.get(classRef);
   if (cached) {
     return cached as Type<Paginated<T>>;
   }
 
-  @ObjectType({ isAbstract: true })
-  abstract class PageBase implements Paginated<T> {
+  // One decorated class, not an `isAbstract: true` base plus a named subclass. The two-class
+  // form is what @nestjs/graphql documents for the pattern where the FACTORY returns a base
+  // and each CALL SITE writes `@ObjectType() class ProductPage extends Paginated(Product) {}`.
+  // This factory does both steps itself, so the base would have no second consumer and nothing
+  // to be abstract for — verified to emit identical SDL either way.
+  @ObjectType(`${classRef.name.replace(/Model$/, '')}Page`)
+  class PageType implements Paginated<T> {
     // The explicit thunk is mandatory: TypeScript's emitted metadata for `T[]` is just
     // `Array`, which tells the schema builder nothing about the element type.
     @Field(() => [classRef], {
@@ -70,9 +78,7 @@ export function Paginated<T>(
     })
     totalCount: number;
 
-    @Field({
-      description: 'Whether a further page exists after this one.',
-    })
+    @Field({ description: 'Whether a further page exists after this one.' })
     hasNextPage: boolean;
 
     @Field(() => Int, {
@@ -83,9 +89,6 @@ export function Paginated<T>(
     @Field(() => Int, { description: 'The page size used for this result.' })
     limit: number;
   }
-
-  @ObjectType(name ?? `${classRef.name}Page`)
-  class PageType extends PageBase {}
 
   pageTypeCache.set(classRef, PageType);
   return PageType;

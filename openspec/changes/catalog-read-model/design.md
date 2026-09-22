@@ -90,6 +90,15 @@ Every paginated query therefore sorts by `(created_at DESC, id DESC)`. The id is
 order is total and stable. This is cheap to get right now and produces a flaky, hard-to-diagnose
 bug if skipped.
 
+**Write the published predicate as a bare boolean, not a bound parameter.** The partial index is
+only usable if the planner can prove the query's predicate implies `WHERE is_published`.
+Postgres normalises the literal `is_published = true` to `is_published`, so a literal matches —
+but `is_published = $1` does not, because under a generic plan the parameter's value is unknown,
+and the planner falls back to a sequential scan or the `category_id` index. So
+`.andWhere('product.is_published')`, never
+`.andWhere('product.is_published = :published', { published: true })`. The index exists or does
+not exist depending on this detail, and nothing about the results would look wrong.
+
 ### Decision 4: `Paginated<T>()` as a generic object-type factory
 
 GraphQL has no generics, so a paginated wrapper per type would be copy-paste. `@nestjs/graphql`'s
@@ -100,6 +109,16 @@ The **NestJS/GraphQL concepts this introduces** — worth understanding before w
 `isAbstract: true` means "do not emit this class itself as a schema type"; the returned subclass
 is what gets emitted. Memoising the factory per type matters, because calling it twice for the
 same `T` would register two types with the same name and schema generation fails.
+
+**Implementation note for the service (from the `/simplify` pass, before `CatalogService`
+exists):** building the page object eagerly means `getManyAndCount()` on every list query, and
+the count is `O(published rows)` while the page itself is `O(limit)` — 20 products out of 50k
+scans 20 index entries for the rows and ~50k for the count, on every request, forever, because
+the shape is baked into the shared primitive. GraphQL only resolves fields the client selects,
+so making `totalCount` a `@ResolveField` on the page type confines that cost to clients that
+actually render page numbers. `hasNextPage` can be answered with `LIMIT limit + 1`, which costs
+one extra row rather than a full scan. Decide this when writing task 4.1 rather than
+retrofitting it.
 
 `PageInput` carries `page` and `limit` with `@Max(100)` — an unbounded `limit` is a denial-of-
 service vector (`graphql.md`), and `@Max` is what makes the spec's "page size is bounded"

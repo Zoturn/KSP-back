@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { POSTGRES_SCHEMA_POLICY } from './postgres-policy';
 import type { AppConfig, DatabaseConfig } from '../config/configuration';
 
 /**
@@ -43,7 +44,7 @@ import type { AppConfig, DatabaseConfig } from '../config/configuration';
           // that behaves differently under ts-node in dev vs compiled dist/ in prod — a
           // classic gotcha) here. Instead, each future feature module registers its own
           // entities via `TypeOrmModule.forFeature([Entity])`, and Nest automatically folds
-          // them into this connection. Zero entities exist yet (Phase 4 adds the first).
+          // them into this connection.
           autoLoadEntities: true,
 
           // Migrations are deliberately NOT configured here. This module only CONNECTS —
@@ -53,22 +54,9 @@ import type { AppConfig, DatabaseConfig } from '../config/configuration';
           // every boot is exactly the kind of surprise database.md's migrations-only rule
           // exists to prevent.
 
-          // NON-NEGOTIABLE per database.md: never true, not even in development. See
-          // LEARNING/00-docker.md and database.md for why — synchronize diffs entities
-          // against the live schema and alters it automatically, with no reviewable history.
-          // Use pgcrypto's gen_random_uuid() for @PrimaryGeneratedColumn('uuid').
-          //
-          // WITHOUT THIS, TypeORM DEFAULTS TO uuid-ossp — and worse, its Postgres driver runs
-          // `CREATE EXTENSION IF NOT EXISTS "uuid-ossp"` ITSELF on connect, whenever any entity
-          // has a uuid column (PostgresDriver, "afterConnect"). That is the ORM performing DDL
-          // outside a migration, which is exactly what database.md's migrations-only rule
-          // exists to prevent: an extension no migration creates, invisible to review, and
-          // present only because something happened to connect first.
-          //
-          // Caught when the first entity migration generated `DEFAULT uuid_generate_v4()`
-          // while our AddExtensions migration installs pgcrypto and citext only.
-          uuidExtension: 'pgcrypto' as const,
-          synchronize: false,
+          // Schema-safety rules shared verbatim with data-source.ts — see
+          // postgres-policy.ts for why each one is non-negotiable.
+          ...POSTGRES_SCHEMA_POLICY,
 
           // TypeORM defaults to 10 retries at 3s apart, so an unreachable database takes
           // ~30 seconds to report a failure it already knew about on the first attempt.
