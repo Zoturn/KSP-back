@@ -89,6 +89,17 @@
       rather than assumed. Deleting a category that still had children was rejected by the
       restrict rule.
       `migration:revert` dropped all three tables cleanly and `migration:run` recreated them.
+- [x] 2.4 (added by the `/test-coverage-check` pass) Guard the uuid-extension decision in
+      `src/database/migrations.spec.ts`. The task 2.3 verification was typed into psql once: it
+      proved the schema was right that day and guards nothing after. Meanwhile
+      `uuidExtension: 'pgcrypto'` now has to be set in two files that nothing keeps in
+      agreement, and dropping it from either silently returns the next generated migration to
+      `uuid_generate_v4()` — working on every machine TypeORM has already touched, failing on a
+      genuinely fresh one. The spec asserts against the **migration files** rather than the
+      config, so it catches the drift whichever config caused it, and would also catch a
+      hand-written migration reaching for the wrong function. Includes a non-vacuity assertion,
+      since the whole suite would otherwise pass green the day the directory path is wrong.
+      Verified by injecting the regression: 2 of 5 tests fail, and pass again once reverted.
 
 ## 3. Models and mappers
 
