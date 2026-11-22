@@ -100,6 +100,22 @@
       hand-written migration reaching for the wrong function. Includes a non-vacuity assertion,
       since the whole suite would otherwise pass green the day the directory path is wrong.
       Verified by injecting the regression: 2 of 5 tests fail, and pass again once reverted.
+- [x] 2.5 (added by the `/code-review` pass) Close the vacuity holes in
+      `entity-conventions.spec.ts` and make the frozen-policy claim true.
+      Four review agents ran; two reported no rule violations, and the bug agents found that
+      three of the four conventions rules could pass **vacuously** — the "collect offenders,
+      assert empty" shape makes a rule that holds indistinguishable from a filter that matched
+      nothing. The worst case was the date rule: it matched only `@CreateDateColumn` /
+      `@UpdateDateColumn`, so a hand-written `@Column({ type: 'timestamp' }) createdAt` — the
+      exact mistake the file's own comment warns about — was skipped entirely.
+      My earlier verification missed it because I injected violations into the sets the filters
+      already inspected. Each rule now asserts a non-empty match set first, and the date filter
+      also matches on property name. Proved both holes closed: a hand-written bare-`timestamp`
+      column now fails naming `Product.publishedAt`, and removing every `slug` column now fails
+      rather than passing.
+      Also `Object.freeze` on `POSTGRES_SCHEMA_POLICY` — the comment claimed spreading a frozen
+      object made disagreement impossible, but `as const` is erased at compile time, so the
+      object was mutable and the stated guarantee was not the one in force.
 
 ## 3. Models and mappers
 

@@ -12,7 +12,7 @@
  *
  * Spreading one frozen object makes disagreement impossible rather than merely discouraged.
  */
-export const POSTGRES_SCHEMA_POLICY = {
+export const POSTGRES_SCHEMA_POLICY = Object.freeze({
   /**
    * NON-NEGOTIABLE per `database.md`: never true, not even in development. `synchronize` diffs
    * entities against the live schema and alters it automatically, with no reviewable history —
@@ -49,4 +49,8 @@ export const POSTGRES_SCHEMA_POLICY = {
    * own `uuidGenerator` getter, independently of the install path.
    */
   installExtensions: false,
-} as const;
+  // `as const` keeps the literal types TypeORM's options require (`uuidExtension` must be the
+  // literal 'pgcrypto', not `string`). `Object.freeze` is what makes the "cannot disagree"
+  // claim above true at RUNTIME as well — `as const` alone is erased at compile time, so the
+  // object was mutable and the comment was describing a guarantee it did not have.
+} as const);

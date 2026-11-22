@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { POSTGRES_SCHEMA_POLICY } from './postgres-policy';
 
 /**
  * Guards the uuid-extension decision against silent regression.
@@ -27,6 +28,24 @@ import { join } from 'node:path';
  * This replaces a one-off check typed into psql during task 2.3: that proved the schema was
  * right on that day and guarded nothing afterwards.
  */
+describe('postgres schema policy', () => {
+  it('is frozen, so the two connections cannot be made to disagree', () => {
+    // The policy object exists so `synchronize`, `uuidExtension` and `installExtensions` are
+    // defined once and spread into both connections. `as const` gives the literal types
+    // TypeORM's options need but is erased at compile time, so without Object.freeze the
+    // shared object was mutable and the "cannot disagree" guarantee was only a comment.
+    expect(Object.isFrozen(POSTGRES_SCHEMA_POLICY)).toBe(true);
+  });
+
+  it('keeps the three settings the database rule requires', () => {
+    expect(POSTGRES_SCHEMA_POLICY).toEqual({
+      synchronize: false,
+      uuidExtension: 'pgcrypto',
+      installExtensions: false,
+    });
+  });
+});
+
 describe('migrations', () => {
   const migrationsDir = join(__dirname, 'migrations');
 

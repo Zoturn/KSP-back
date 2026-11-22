@@ -30,8 +30,10 @@ relation field resolvers, offset/limit paging. See `database.md`, `graphql.md`, 
 
 ### Decision 1: Adjacency list for the category tree — NOT a closure table
 
-**This contradicts `CLAUDE.md`, which describes `Category` as a closure-table tree.** Flagging it
-loudly rather than quietly changing it.
+**This originally contradicted `CLAUDE.md`, which described `Category` as a closure-table tree.**
+It was flagged loudly rather than changed quietly, and `CLAUDE.md` has since been corrected to
+say adjacency list — so the two now agree, and this paragraph records why rather than warning
+about a live inconsistency.
 
 `Category` gets a self-referencing nullable `parent_id`. No second table, and no TypeORM
 `@Tree('closure-table')`.
@@ -101,14 +103,27 @@ not exist depending on this detail, and nothing about the results would look wro
 
 ### Decision 4: `Paginated<T>()` as a generic object-type factory
 
-GraphQL has no generics, so a paginated wrapper per type would be copy-paste. `@nestjs/graphql`'s
-answer is a function returning a class decorated `@ObjectType({ isAbstract: true })`, which the
-schema builder materialises per instantiation (`ProductPage`, and later `OrderPage`).
+GraphQL has no generics, so a paginated wrapper per type would be copy-paste. The code-first
+answer is a function that builds and returns a decorated class per item type (`ProductPage`, and
+later `OrderPage`).
 
-The **NestJS/GraphQL concepts this introduces** — worth understanding before writing it:
-`isAbstract: true` means "do not emit this class itself as a schema type"; the returned subclass
-is what gets emitted. Memoising the factory per type matters, because calling it twice for the
-same `T` would register two types with the same name and schema generation fails.
+**Corrected after implementation.** This decision originally specified the documented
+`@ObjectType({ isAbstract: true })` pattern: the factory returns an abstract base and each call
+site writes `@ObjectType() class ProductPage extends Paginated(Product) {}`. That shape exists
+for when the **call site** does the extending. Our factory does both steps itself, so the base
+had no second consumer and nothing to be abstract for — it was two classes and an inheritance
+link per call for no gain. The `/simplify` pass collapsed it to one decorated class, verified
+equivalent by comparing emitted SDL rather than by argument (`paginated.spec.ts` builds real
+SDL through `GraphQLSchemaFactory`).
+
+The GraphQL type name is **derived** from the item class with the `Model` suffix stripped, not
+passed in. An earlier version accepted a `name` override and it was a footgun twice: the cache
+was keyed on the class alone, so a second call with a different name silently returned the first
+class; and it let a call site disagree with the `@ObjectType('Product')` on the model itself.
+
+Memoising the factory per type matters regardless of shape, because calling it twice for the
+same item type would register two classes under one GraphQL type name and schema generation
+fails — at boot, far from the second call.
 
 **Implementation note for the service (from the `/simplify` pass, before `CatalogService`
 exists):** building the page object eagerly means `getManyAndCount()` on every list query, and
@@ -227,8 +242,16 @@ products in it. That is also why `Product.category` is nullable in the schema �
 permits absence, so the contract must admit it.
 
 Indexes: `category_id` (FK, and the list filter); and a **partial** index
-`(created_at DESC, id DESC) WHERE is_published` — partial because every catalogue query carries
-that predicate, so the index stays small and matches the sort from Decision 3 exactly.
+`(created_at, id) WHERE is_published` — partial because every catalogue query carries that
+predicate, so the index stays small by excluding drafts entirely.
+
+**Corrected after implementation:** this originally specified `(created_at DESC, id DESC)` to
+"match the sort exactly". The declared index is ascending, and that is fine rather than a
+compromise — a btree on `(created_at, id)` fully supports `ORDER BY created_at DESC, id DESC`
+via a backward index scan, because reversing _every_ key is exactly reverse traversal order.
+Explicit `DESC` would only be needed for a **mixed** sort such as `created_at DESC, id ASC`,
+which no query here uses. Since Decision 3 fixes both keys in the same direction, the ascending
+index is sufficient and a second index would be waste.
 
 **`product_images`**
 
@@ -246,10 +269,15 @@ product, which is the genuine ownership case `database.md` reserves cascade for.
 `(product_id, position)` — it serves both the loader's batch lookup and the spec's defined
 ordering.
 
-**Migration authoring note:** `migration:generate` diffs entities against the live database, so it
-will produce the tables — but the differ routinely omits `CHECK` constraints and partial indexes.
-Those must be added by hand, and the generated SQL read before it is run. This is the first
-migration where that actually matters.
+**Migration authoring note, corrected by task 2.2:** this warned that the differ routinely omits
+`CHECK` constraints and partial indexes, and that both would need hand-adding. It does not. When
+the entity declares them with `@Check(...)` and `@Index(name, cols, { where })`, the generated
+SQL contains them correctly — nothing needed hand-editing here.
+
+Reading the generated SQL is still mandatory, just for a different reason: the differ emits what
+the decorators say, so the failure mode is a **missing decorator**, not a lossy differ. And it
+caught a real one — every table came out with `DEFAULT uuid_generate_v4()` (uuid-ossp), an
+extension no migration installs. See `database.md`.
 
 ## Risks / Trade-offs
 
@@ -272,7 +300,8 @@ migration where that actually matters.
 Additive only — new tables, no changes to existing ones, so no backfill and no downtime concern.
 
 1. Write entities.
-2. `migration:generate`, then **read the SQL** and hand-add the `CHECK` and partial index.
+2. `migration:generate`, then **read the SQL** — not to hand-add the `CHECK` and partial index
+   (the decorators produce both), but to check the differ emitted what you meant.
 3. `migration:run` against the local database.
 4. Roll back by `migration:revert` (drops the three tables). Safe while the tables hold no
    production data, which is the whole of this phase.

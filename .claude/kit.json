@@ -1,0 +1,8 @@
+{
+  "stacks": [
+    "typescript",
+    "nestjs",
+    "postgres"
+  ],
+  "personal": false
+}

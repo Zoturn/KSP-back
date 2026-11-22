@@ -39,3 +39,12 @@ openapi.json
 
 # Personal learning notes — kept locally, not published
 LEARNING/
+
+# Employer/client tooling installed by my-kit — MUST NOT reach this public repo.
+# jira.sh defaults JIRA_BASE_URL to a client's Atlassian host, SKILL.md uses that client's
+# ticket keys, and the two agents below were written for a different project (Express/
+# Sequelize, "new tables come from init() — no migration") which contradicts database.md.
+# workflow.md: "Do not commit secrets, client names or NDA-covered code into shared repos."
+.claude/skills/jira/
+.claude/agents/bugFixAgent.md
+.claude/agents/jira-spec-implementer.md

@@ -38,8 +38,10 @@ consumed by `ksp-frontend`'s `graphql-codegen`. An e2e test fails if the committ
 
 ## Domain
 
-E-commerce catalog. First-iteration entities: `User`, `Address`, `Category` (closure-table
-tree), `Product`, `ProductImage`, `Cart`, `CartItem`, `Order`, `OrderItem`.
+E-commerce catalog. First-iteration entities: `User`, `Address`, `Category` (adjacency-list
+tree — a self-referencing `parent_id`, **not** a closure table; see the catalogue change's
+design Decision #1 for why, and `WITH RECURSIVE` is the answer when descendant queries are
+needed), `Product`, `ProductImage`, `Cart`, `CartItem`, `Order`, `OrderItem`.
 Deferred: ProductVariant, Payment, Review, Coupon.
 
 ## Layout
@@ -107,3 +109,20 @@ npx @fission-ai/openspec archive "<name>"
 ## Working agreement
 
 Every component ships with **tests and an explanation**. See `.claude/rules/testing.md`.
+
+<!-- my-kit:start -->
+
+> **Only the global rules are imported below.** `database.md`, `docker.md`, `graphql.md`,
+> `nestjs.md` and `testing.md` are deliberately absent: they carry `paths:` frontmatter and
+> load lazily when a matching file is touched. Importing them here would pull all five into
+> every session, which is exactly what the path scoping exists to avoid — and would make the
+> "path-scoped" claim at the top of this file untrue.
+
+@.claude/rules/brainstorming.md
+@.claude/rules/model-advice.md
+@.claude/rules/no-attribution.md
+@.claude/rules/postgres.md
+@.claude/rules/spec-gate.md
+@.claude/rules/typescript.md
+@.claude/rules/workflow.md
+<!-- my-kit:end -->
