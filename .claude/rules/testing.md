@@ -16,7 +16,7 @@ paths:
 2. **Immediately** write its tests — never batch them for later.
 3. Explain what was built and why; capture durable concepts in `LEARNING/NN-topic.md`.
 
-Deliberately not strict TDD — the goal is a teaching rhythm where code and test are read together.
+Deliberately not strict TDD — the goal is a rhythm where code and test are read together.
 
 ## Tools & location
 

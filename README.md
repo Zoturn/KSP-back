@@ -3,7 +3,7 @@
 **GraphQL** API for an e-commerce catalog — **NestJS + Apollo Server 5 + TypeORM + PostgreSQL**,
 JWT auth, code-first schema.
 
-Part of the KSP learning project. Its sister repo, `ksp-frontend`, generates its entire typed
+Part of the KSP project. Its sister repo, `ksp-frontend`, generates its entire typed
 client from this service's committed `schema.gql`.
 
 > The API is **GraphQL-only** — one endpoint, `POST /graphql`. The only REST routes are

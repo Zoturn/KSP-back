@@ -8,9 +8,10 @@ paths:
 
 # Docker conventions
 
-The author is **new to Docker**. Every Docker change must be explained, not just applied.
+Every Docker change must be explained, not just applied — a compose file nobody on the team
+can read line by line is a liability, not infrastructure.
 
-## Teaching requirement
+## Explanation requirement
 - Comment the compose file generously — what each key does, not just what it is set to.
 - When introducing a Docker concept (image vs container, volume, port mapping, healthcheck,
   network, `depends_on`), **explain it in the response** and capture it in

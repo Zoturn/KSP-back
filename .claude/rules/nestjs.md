@@ -118,9 +118,9 @@ that advice for `@nestjs/terminus` produced an allowlist entry that changed noth
 terminus's real blocker was three files using `import.meta` — a different failure with an
 identical message. Reading the failing file beat trusting the error text.
 
-## Teaching requirement
+## Explanation requirement
 
-This is a learning project. When introducing a NestJS concept for the first time
-(decorator, lifecycle hook, guard, interceptor, custom provider), **explain what it does and
-why it's used here**, and capture durable concepts in `ksp-backend/LEARNING/`.
+When introducing a NestJS concept for the first time (decorator, lifecycle hook, guard,
+interceptor, custom provider), **explain what it does and why it's used here**, and capture
+durable concepts in `ksp-backend/LEARNING/` (local notes, gitignored).
 Pair every component with tests — see the testing rule.

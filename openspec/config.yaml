@@ -4,8 +4,8 @@ context: |
   Project: KSP - E-Commerce Catalog API
   Purpose: GraphQL API for an e-commerce catalog (products, categories, cart, checkout).
   App root: ksp-backend/
-  Nature: LEARNING PROJECT — the author is new to NestJS and Docker. Clarity and
-  teachability outrank cleverness; every capability must be explainable step by step.
+  Nature: Clarity outranks cleverness — every capability must be explainable step by step,
+  and nothing is "done" until it has tests AND a written explanation.
 
   Tech stack:
     - Runtime: Node 22, TypeScript, NestJS 11
@@ -71,7 +71,7 @@ context: |
     - Always test auth boundaries: 401 without a token, 403 when a customer hits an admin route
     - Test names state behavior, not implementation
 
-  Learning artifacts:
+  Local notes:
     - Durable concepts are captured in LEARNING/NN-topic.md
       (00-docker.md and 01-graphql.md already exist)
     - Path-scoped conventions live in THIS repo's own .claude/rules/
@@ -91,7 +91,7 @@ rules:
     - Call out any deviation from the non-negotiable data modeling rules explicitly
   design:
     - Name the specific NestJS concepts the change introduces (decorators, providers, guards,
-      lifecycle hooks) — this project is a teaching vehicle, not just a deliverable
+      lifecycle hooks) — the explanation is part of the deliverable, not an extra
     - 'Show the module dependency impact: what is imported, what must be exported'
     - For schema changes, show the columns/types/constraints and the resulting migration intent
   tasks:

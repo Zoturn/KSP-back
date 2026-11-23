@@ -7,7 +7,8 @@
 # "Compose" lets us define them declaratively and start everything with ONE
 # command:  docker compose up -d
 #
-# Every keyword below is explained line-by-line in LEARNING/00-docker.md.
+# Every keyword below is explained line-by-line in LEARNING/00-docker.md
+# (local notes, gitignored — not present in a fresh clone).
 # Modern Compose (v2) no longer needs a top-level `version:` key — omitting it
 # is correct and intentional, not an oversight.
 # ---------------------------------------------------------------------------

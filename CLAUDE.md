@@ -63,7 +63,7 @@ src/
     entities/  models/  inputs/
 test/                # *.e2e-spec.ts (Supertest -> /graphql)
 openspec/            # capability specs written before implementation
-LEARNING/            # teaching notes (Docker, GraphQL, NestJS) — LOCAL ONLY, gitignored
+LEARNING/            # local working notes — gitignored, never committed
 ```
 
 ## Key decisions (rationale in `.claude/rules/`)
